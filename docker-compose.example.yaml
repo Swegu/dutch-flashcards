@@ -1,5 +1,7 @@
-# Runs the prebuilt multi-arch image (x86-64 and ARM64) - no clone or build needed:
-#   curl -fsSL https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml | docker compose -p woordjes -f - up -d
+# Runs the prebuilt multi-arch image (x86-64 and ARM64) - no clone or build needed.
+# Run in an empty folder; it saves this file as docker-compose.yaml there and starts the app:
+#   curl -fsSL -o docker-compose.yaml https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml && docker compose up -d
+# Edit the settings below, then run `docker compose up -d` again to apply them.
 services:
   web:
     image: ghcr.io/swegu/dutch-flashcards:latest

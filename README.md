@@ -16,8 +16,10 @@ Update after changing code: `docker compose up -d --build`. Stop: `docker compos
 
 ### Without cloning (prebuilt x86-64 + ARM64 image)
 
+Run this in an empty folder. It saves `docker-compose.yaml` into that folder and starts the app:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml | docker compose -p woordjes -f - up -d
+curl -fsSL -o docker-compose.yaml https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml && docker compose up -d
 ```
 
 The image is built by GitHub Actions on every push to `main` and published to `ghcr.io/swegu/dutch-flashcards`
