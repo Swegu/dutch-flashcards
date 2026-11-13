@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS words(
   globally_skipped INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS words_rank ON words(rank);
-CREATE INDEX IF NOT EXISTS words_skip ON words(globally_skipped);
 
 CREATE TABLE IF NOT EXISTS translations(
   word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
@@ -106,6 +105,7 @@ const migrations = [
 for (const [col, def] of migrations) {
   if (!cols.has(col)) db.exec(`ALTER TABLE words ADD COLUMN ${col} ${def}`);
 }
+db.exec('CREATE INDEX IF NOT EXISTS words_skip ON words(globally_skipped)');
 
 // Allow NULL rank on older schemas where rank had NOT NULL constraint
 const rankInfo = db.prepare("SELECT \"notnull\" FROM pragma_table_info('words') WHERE name='rank'").get();
