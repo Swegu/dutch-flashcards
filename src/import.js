@@ -254,6 +254,7 @@ async function run() {
       forms: formsList,
       lemma: fallbackLemma,
       topics,
+      rawTopics: [...f.rawTopics],
     };
 
     if (bestRank !== null) rankedRows.push(item);
@@ -269,8 +270,8 @@ async function run() {
   setMeta('import_message', `Saving ${combined.length} words to database…`);
 
   const ins = db.prepare(`
-    INSERT INTO words(rank, word, pos, article, glosses, alt_glosses, meaning_conflict, ipa, example_nl, example_en, freq, forms, lemma, topics)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO words(rank, word, pos, article, glosses, alt_glosses, meaning_conflict, ipa, example_nl, example_en, freq, forms, lemma, topics, level)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(word) DO UPDATE SET
       rank=excluded.rank,
       pos=excluded.pos,
@@ -284,7 +285,8 @@ async function run() {
       freq=excluded.freq,
       forms=excluded.forms,
       lemma=excluded.lemma,
-      topics=excluded.topics
+      topics=excluded.topics,
+      level=excluded.level
   `);
 
   db.transaction(() => {
@@ -292,6 +294,13 @@ async function run() {
     let seqRank = 0;
     for (const x of combined) {
       const assignedRank = x.rawRank !== null ? ++seqRank : null;
+      const level = db.computeWordLevel({
+        rank: assignedRank,
+        word: x.word,
+        topics: x.topics,
+        exampleNl: x.exNl,
+        rawTopics: x.rawTopics,
+      });
       ins.run(
         assignedRank,
         x.word,
@@ -306,11 +315,13 @@ async function run() {
         x.freq,
         x.forms.length ? JSON.stringify(x.forms) : null,
         x.lemma,
-        x.topics.length ? JSON.stringify(x.topics) : null
+        x.topics.length ? JSON.stringify(x.topics) : null,
+        level
       );
     }
   })();
 
+  setMeta('levels_version', '1');
   setMeta('import_version', IMPORT_VERSION);
   setMeta('import_state', 'done');
   setMeta('import_message', '');

@@ -2,8 +2,9 @@ const I18N = {
   en: {
     login: 'Log in', register: 'Create account', username: 'Username', password: 'Password (min. 8 characters)',
     logout: 'Log out', show: 'Show answer', again: 'Again', good: 'Good', easy: 'Easy', score: 'Score', streak: 'Streak',
+    dayStreak: 'Day streak', answerStreak: 'Answer streak',
     best: 'Best streak', learned: 'Words started', mastered: 'Mastered', accuracy: 'Accuracy', today: 'Today', due: 'Due now',
-    last7: 'Last 7 days', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: 'New', loading: 'Loading…',
+    last7: 'Last 7 days', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: '🌱 New', loading: 'Loading…',
     importing: 'Preparing the Dutch dictionary… first start only, this can take a few minutes.', retry: 'Retry',
     source: 'Source', rank: 'frequency rank', unranked: 'Unranked (Wiktionary)', mt: 'machine translation',
     haveAccount: 'Already have an account? Log in', noAccount: 'No account yet? Create one', err: 'Something went wrong',
@@ -16,6 +17,30 @@ const I18N = {
     conflictWarn: 'Sources disagree on meaning — verify on Wiktionary:',
     wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
     searchPlaceholder: 'Search Dutch or English word… ( / )', undo: 'Undo', undoneToast: 'Last rating undone.',
+    dailyPattern: 'Daily Learn Pattern',
+    modeDaily: '📅 Daily Plan', modeFree: '♾️ Free Practice',
+    stepNew: '🌱 New words', stepReviews: '🔄 Reviews', stepGoal: '🎯 Today',
+    goalReady: 'In progress', goalCompleteBadge: '✓ Daily goal met',
+    planSettings: '⚙️ Plan',
+    paceLight: '🐢 Casual (5 / 15)', paceRegular: '🚶 Regular (10 / 30)', paceIntensive: '🚀 Intensive (20 / 60)',
+    newPerDay: 'New words / day', reviewsPerDay: 'Total reviews / day', targetLevelLabel: 'Difficulty level',
+    savePlan: 'Save daily plan', planSavedToast: 'Daily learning plan updated.',
+    dailyGoalToast: '🎉 Daily learn pattern complete! (+50 bonus)',
+    dailyDoneTitle: '🎉 Daily Learn Pattern Complete!',
+    dailyDoneDesc: 'You finished today’s structured session of new level-matched words and spaced-repetition reviews.',
+    continueExtra: '➕ Continue Extra Practice', adjustPlan: '⚙️ Adjust Daily Goal',
+    stageDue: '🔄 Due review', stageConsolidate: '🧠 Consolidate', boxLabel: 'Box',
+    levelsTitle: 'Language Levels (CEFR)',
+    levels: {
+      auto: '🎓 Auto Level',
+      all: 'All levels',
+      A1: 'A1 · Beginner',
+      A2: 'A2 · Elementary',
+      B1: 'B1 · Intermediate',
+      B2: 'B2 · Upper-Int.',
+      C1: 'C1 · Advanced',
+      C2: 'C2 · Mastery',
+    },
     topics: {
       all: 'All topics',
       food: '🍽️ Food & Drink',
@@ -28,8 +53,9 @@ const I18N = {
   bg: {
     login: 'Вход', register: 'Създай профил', username: 'Потребителско име', password: 'Парола (мин. 8 символа)',
     logout: 'Изход', show: 'Покажи отговора', again: 'Отново', good: 'Добре', easy: 'Лесно', score: 'Точки', streak: 'Серия',
+    dayStreak: 'Дни подред', answerStreak: 'Верни подред',
     best: 'Най-добра серия', learned: 'Започнати думи', mastered: 'Научени', accuracy: 'Точност', today: 'Днес', due: 'За преговор',
-    last7: 'Последните 7 дни', noCards: 'Няма налични карти в тази тема.', stats: 'Напредък', newWord: 'Нова', loading: 'Зареждане…',
+    last7: 'Последните 7 дни', noCards: 'Няма налични карти в тази тема.', stats: 'Напредък', newWord: '🌱 Нова', loading: 'Зареждане…',
     importing: 'Подготвя се холандският речник… само при първо стартиране, може да отнеме няколко минути.', retry: 'Опитай пак',
     source: 'Източник', rank: 'ранг по честота', unranked: 'Без ранг (Wiktionary)', mt: 'машинен превод',
     haveAccount: 'Вече имаш профил? Влез', noAccount: 'Нямаш профил? Създай', err: 'Нещо се обърка',
@@ -42,6 +68,30 @@ const I18N = {
     conflictWarn: 'Разминаване между източниците — провери в Wiktionary:',
     wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
     searchPlaceholder: 'Търси дума на холандски или английски… ( / )', undo: 'Отмени', undoneToast: 'Последната оценка е отменена.',
+    dailyPattern: 'Дневен план за учене',
+    modeDaily: '📅 Дневен план', modeFree: '♾️ Свободна практика',
+    stepNew: '🌱 Нови думи', stepReviews: '🔄 Преговори', stepGoal: '🎯 Днес',
+    goalReady: 'В процес', goalCompleteBadge: '✓ Изпълнена цел',
+    planSettings: '⚙️ План',
+    paceLight: '🐢 Леко (5 / 15)', paceRegular: '🚶 Редовно (10 / 30)', paceIntensive: '🚀 Интензивно (20 / 60)',
+    newPerDay: 'Нови думи / ден', reviewsPerDay: 'Общо преговори / ден', targetLevelLabel: 'Езиково ниво',
+    savePlan: 'Запази плана', planSavedToast: 'Дневният план е обновен.',
+    dailyGoalToast: '🎉 Дневният план е изпълнен! (+50 бонус)',
+    dailyDoneTitle: '🎉 Дневният план за днес е изпълнен!',
+    dailyDoneDesc: 'Завърши дневната си сесия от нови думи за твоето ниво и планирани преговори.',
+    continueExtra: '➕ Допълнителна практика', adjustPlan: '⚙️ Промени дневната цел',
+    stageDue: '🔄 За преговор', stageConsolidate: '🧠 Затвърждаване', boxLabel: 'Кутия',
+    levelsTitle: 'Езикови нива (CEFR)',
+    levels: {
+      auto: '🎓 Авто ниво',
+      all: 'Всички нива',
+      A1: 'A1 · Начинаещ',
+      A2: 'A2 · Елементарно',
+      B1: 'B1 · Средно',
+      B2: 'B2 · Напреднало средно',
+      C1: 'C1 · Напреднал',
+      C2: 'C2 · Професионално',
+    },
     topics: {
       all: 'Всички теми',
       food: '🍽️ Храна и напитки',
@@ -58,6 +108,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 let lang = localStorage.lang || 'en';
 let topic = localStorage.topic || 'all';
+let level = localStorage.level || 'auto';
+let studyMode = localStorage.studyMode === 'free' ? 'free' : 'daily';
+let extraPractice = false;
+let editingPlan = false;
 let shuffle = localStorage.shuffle !== '0'; // enabled by default
 let stats, queue = [], card = null, flipped = false, gain = 0, mode = 'login', authErr = '';
 let reporting = false, showingReports = false, reportsList = [];
@@ -113,24 +167,39 @@ function updateHeaderBadges() {
 
 async function start() {
   stats = await api('stats');
-  queue = []; card = null; showingReports = false; reporting = false;
+  if (stats.dailyPlan?.targetLevel) {
+    level = localStorage.level = stats.dailyPlan.targetLevel;
+  }
+  queue = []; card = null; showingReports = false; reporting = false; editingPlan = false; extraPractice = false;
   $('#logout').hidden = false;
   updateHeaderBadges();
   await next();
 }
 
 async function fill() {
+  if (studyMode === 'daily' && !extraPractice && stats?.dailyPlan?.goalMet) return;
   const exclude = [card, ...queue].filter(Boolean).map(c => c.id);
   const qs = new URLSearchParams({
     limit: '10',
     exclude: exclude.join(','),
     topic,
+    level,
+    mode: studyMode,
+    extra: extraPractice ? '1' : '0',
     shuffle: shuffle ? '1' : '0',
   });
   queue.push(...await api(`cards?${qs}`));
 }
 
 async function next() {
+  if (studyMode === 'daily' && !extraPractice && stats?.dailyPlan?.goalMet) {
+    queue = [];
+    card = null;
+    flipped = false;
+    reporting = false;
+    render();
+    return;
+  }
   if (queue.length < 3) await fill().catch(() => {});
   card = queue.shift() || null;
   flipped = false;
@@ -182,9 +251,14 @@ async function rate(r) {
     updateHeaderBadges();
     if (r === 0) {
       c.isNew = false;
+      c.stage = 'due';
       queue.splice(Math.min(3, queue.length), 0, c);
     }
-    showToast(`${t(['again', 'good', 'easy'][r])}${gain ? ` (+${gain})` : ''}`, true);
+    if (res.dailyGoalJustMet) {
+      showToast(t('dailyGoalToast'), true);
+    } else {
+      showToast(`${t(['again', 'good', 'easy'][r])}${gain ? ` (+${gain})` : ''}`, true);
+    }
   } catch (e) {
     return view(`<p class="err">${esc(e.message)}</p>`);
   }
@@ -205,6 +279,26 @@ async function undoLast() {
     updateHeaderBadges();
     render();
     showToast(t('undoneToast'));
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
+async function saveDailySettings(newGoal, revGoal, targetLvl) {
+  try {
+    const res = await api('settings', {
+      dailyNewGoal: newGoal,
+      dailyReviewGoal: revGoal,
+      targetLevel: targetLvl,
+    });
+    stats = res.stats;
+    level = localStorage.level = stats.dailyPlan.targetLevel;
+    editingPlan = false;
+    extraPractice = false;
+    queue = [];
+    card = null;
+    showToast(t('planSavedToast'));
+    await next();
   } catch (e) {
     showToast(e.message);
   }
@@ -249,21 +343,131 @@ async function resolveReport(wordId, action) {
   }
 }
 
+function dailyPatternHtml() {
+  const dp = stats.dailyPlan;
+  if (!dp) return '';
+  const activeLvlLabel = dp.targetLevel === 'auto'
+    ? `${t('levels').auto} (${dp.autoLevel})`
+    : (t('levels')[dp.targetLevel] || dp.targetLevel);
+  const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
+
+  const settingsDrawer = editingPlan ? `
+    <div class="plan-drawer">
+      <div class="pace-presets">
+        <button type="button" class="${dp.dailyNewGoal === 5 && dp.dailyReviewGoal === 15 ? 'active' : ''}" data-act="preset-pace" data-new="5" data-rev="15">${t('paceLight')}</button>
+        <button type="button" class="${dp.dailyNewGoal === 10 && dp.dailyReviewGoal === 30 ? 'active' : ''}" data-act="preset-pace" data-new="10" data-rev="30">${t('paceRegular')}</button>
+        <button type="button" class="${dp.dailyNewGoal === 20 && dp.dailyReviewGoal === 60 ? 'active' : ''}" data-act="preset-pace" data-new="20" data-rev="60">${t('paceIntensive')}</button>
+      </div>
+      <div class="plan-grid">
+        <label>
+          <span>${t('newPerDay')}</span>
+          <input id="plan-new" type="number" min="1" max="100" value="${dp.dailyNewGoal}">
+        </label>
+        <label>
+          <span>${t('reviewsPerDay')}</span>
+          <input id="plan-rev" type="number" min="5" max="500" value="${dp.dailyReviewGoal}">
+        </label>
+        <label>
+          <span>${t('targetLevelLabel')}</span>
+          <select id="plan-level">
+            ${Object.entries(t('levels')).map(([k, lbl]) => `
+              <option value="${k}"${dp.targetLevel === k ? ' selected' : ''}>${esc(k === 'auto' ? `${lbl} (${dp.autoLevel})` : lbl)}</option>
+            `).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="primary" data-act="save-plan">${t('savePlan')}</button>
+        <button type="button" data-act="toggle-plan">${t('cancel')}</button>
+      </div>
+    </div>` : '';
+
+  return `<section class="panel daily-panel ${dp.goalMet ? 'goal-met' : ''}">
+    <div class="daily-head">
+      <div class="daily-title-wrap">
+        <h2>${t('dailyPattern')}</h2>
+        <span class="pill level-badge level-${esc(dp.activeLevel === 'all' ? 'A1' : dp.activeLevel)}">${esc(activeLvlLabel)}</span>
+      </div>
+      <div class="daily-actions">
+        <button type="button" class="${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
+          ${t(studyMode === 'daily' ? 'modeDaily' : 'modeFree')}
+        </button>
+        <button type="button" class="${editingPlan ? 'active' : ''}" data-act="toggle-plan">${t('planSettings')}</button>
+      </div>
+    </div>
+    <div class="pattern-steps">
+      <div class="pattern-step ${dp.newToday >= dp.dailyNewGoal ? 'done' : ''}">
+        <div class="step-top">
+          <span>${t('stepNew')}</span>
+          <b>${dp.newToday}/${dp.dailyNewGoal}</b>
+        </div>
+        <div class="mini-bar"><i style="width:${dp.newProgressPct}%"></i></div>
+      </div>
+      <div class="pattern-step ${dp.reviewsToday >= dp.dailyReviewGoal ? 'done' : ''}">
+        <div class="step-top">
+          <span>${t('stepReviews')}</span>
+          <b>${dp.reviewsToday}/${dp.dailyReviewGoal}</b>
+        </div>
+        <div class="mini-bar"><i style="width:${dp.reviewProgressPct}%"></i></div>
+      </div>
+      <div class="pattern-step ${dp.goalMet ? 'done' : ''}">
+        <div class="step-top">
+          <span>${t('stepGoal')}</span>
+          <b>${dp.goalMet ? t('goalCompleteBadge') : `${todayAcc}%`}</b>
+        </div>
+        <div class="mini-bar"><i style="width:${dp.goalMet ? 100 : Math.round((dp.newProgressPct + dp.reviewProgressPct) / 2)}%"></i></div>
+      </div>
+    </div>
+    ${settingsDrawer}
+  </section>`;
+}
+
 function controlsHtml() {
+  const dp = stats.dailyPlan;
+  const levelOpts = Object.entries(t('levels'))
+    .map(([k, label]) => {
+      const text = k === 'auto' && dp?.autoLevel ? `${label} (${dp.autoLevel})` : label;
+      return `<option value="${k}"${level === k ? ' selected' : ''}>${esc(text)}</option>`;
+    })
+    .join('');
+
   const topicOpts = Object.entries(t('topics'))
     .map(([k, label]) => `<option value="${k}"${topic === k ? ' selected' : ''}>${esc(label)}</option>`)
     .join('');
 
   return `<section class="controls">
+    <select id="level-select" aria-label="Difficulty level">${levelOpts}</select>
     <select id="topic-select" aria-label="Topic">${topicOpts}</select>
     <button id="shuffle-toggle" class="${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
     <div class="search-wrap">
       <input id="search-input" type="search" value="${esc(searchQuery)}" placeholder="${t('searchPlaceholder')}" autocomplete="off">
       ${searchResults.length ? `<div class="search-drop">${searchResults.map(r => `
         <button type="button" class="search-item" data-act="jump" data-word="${esc(r.word)}">
-          <b>${esc(r.word)}</b>
+          <div>
+            <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
+            <b>${esc(r.word)}</b>
+          </div>
           <span>${esc(r.glosses.slice(0, 2).join('; '))}</span>
         </button>`).join('')}</div>` : ''}
+    </div>
+  </section>`;
+}
+
+function dailyDoneHtml() {
+  const dp = stats.dailyPlan;
+  const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
+  return `<section class="panel daily-done">
+    <h2>${t('dailyDoneTitle')}</h2>
+    <p class="muted">${t('dailyDoneDesc')}</p>
+    <div class="done-metrics">
+      <div><b>${dp.newToday}/${dp.dailyNewGoal}</b><span>${t('stepNew')}</span></div>
+      <div><b>${dp.reviewsToday}/${dp.dailyReviewGoal}</b><span>${t('stepReviews')}</span></div>
+      <div><b>${todayAcc}%</b><span>${t('accuracy')}</span></div>
+      <div><b>🔥 ${stats.dayStreak}</b><span>${t('dayStreak')}</span></div>
+    </div>
+    <div class="row-actions center-actions">
+      <button type="button" class="primary" data-act="extra-practice">${t('continueExtra')}</button>
+      <button type="button" data-act="toggle-plan">${t('adjustPlan')}</button>
     </div>
   </section>`;
 }
@@ -274,6 +478,14 @@ function cardHtml() {
   const topicBadges = (c.topics || [])
     .map(tp => `<span class="pill topic-pill">${esc(t('topics')[tp] || tp)}</span>`)
     .join('');
+
+  const stageBadge = c.isNew || c.stage === 'new'
+    ? `<span class="tag">${t('newWord')}</span>`
+    : (c.stage === 'consolidate'
+      ? `<span class="pill stage-pill">${t('stageConsolidate')} · ${t('boxLabel')} ${c.box}</span>`
+      : `<span class="pill stage-pill">${t('stageDue')} · ${t('boxLabel')} ${c.box}</span>`);
+
+  const levelBadge = `<span class="pill level-badge level-${esc(c.level || 'C2')}">${esc(c.level || 'C2')}</span>`;
 
   let back = '';
   if (flipped) {
@@ -319,7 +531,8 @@ function cardHtml() {
     <div class="card" data-act="flip">
       <div class="card-top">
         <div class="badges">
-          ${c.isNew ? `<span class="tag">${t('newWord')}</span>` : ''}
+          ${levelBadge}
+          ${stageBadge}
           ${topicBadges}
         </div>
         <div class="card-actions">
@@ -352,6 +565,7 @@ function reportsPanelHtml() {
     ${!reportsList.length ? `<p class="muted">${t('noReports')}</p>` : reportsList.map(r => `
       <div class="report-item">
         <div>
+          <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
           <strong>${esc(r.word)}</strong> <span class="muted">(${esc(r.pos || '')}) · ×${r.reportCount}</span>
           <div>${r.glosses.map(esc).join('; ')}</div>
           ${r.reasons.length ? `<div class="muted small">“${r.reasons.map(esc).join('”, “')}”</div>` : ''}
@@ -366,13 +580,28 @@ function reportsPanelHtml() {
 }
 
 function progressHtml() {
-  const s = stats, pct = n => Math.round(n / (s.totalWords || 1) * 100), max = Math.max(1, ...s.days.map(d => d.reviews));
+  const s = stats, pct = (n, tot) => Math.round(n / (tot || 1) * 100), max = Math.max(1, ...s.days.map(d => d.reviews));
+  const levelsHtml = (s.levels || []).map(l => {
+    const isSelected = level === l.level || (level === 'auto' && s.dailyPlan?.autoLevel === l.level);
+    const mastPct = pct(l.mastered, l.total);
+    const learnPct = pct(Math.max(0, l.learned - l.mastered), l.total);
+    return `<button type="button" class="level-card ${isSelected ? 'selected' : ''}" data-act="select-level" data-level="${esc(l.level)}">
+      <div class="level-card-head">
+        <span class="pill level-badge level-${esc(l.level)}">${esc(t('levels')[l.level] || l.level)}</span>
+        <span class="small"><b>${l.learned}</b>/${l.total}${l.due ? ` · <span class="due-dot">${l.due} ${t('due').toLowerCase()}</span>` : ''}</span>
+      </div>
+      <div class="bar small-bar"><i style="width:${mastPct}%"></i><i class="l" style="width:${learnPct}%"></i></div>
+    </button>`;
+  }).join('');
+
   return `<section class="panel"><h2>${t('stats')}</h2>
-    <p>${t('learned')}: <b>${s.learned}</b> · ${t('accuracy')}: <b>${s.accuracy}%</b> · ${t('best')}: <b>${s.bestStreak}</b>
+    <p>${t('learned')}: <b>${s.learned}</b> · ${t('accuracy')}: <b>${s.accuracy}%</b>
+       · ${t('answerStreak')}: <b>${s.streak}</b> (${t('best')}: <b>${s.bestStreak}</b>)
        · ${t('today')}: <b>${s.today.correct}/${s.today.reviews}</b></p>
-    <div class="bar"><i style="width:${pct(s.mastered)}%"></i><i class="l" style="width:${pct(s.learned - s.mastered)}%"></i></div>
+    <div class="bar"><i style="width:${pct(s.mastered, s.totalWords)}%"></i><i class="l" style="width:${pct(s.learned - s.mastered, s.totalWords)}%"></i></div>
+    ${levelsHtml ? `<h3>${t('levelsTitle')}</h3><div class="levels-grid">${levelsHtml}</div>` : ''}
     <h3>${t('last7')}</h3>
-    <div class="days">${s.days.map(d => `<div title="${d.day}: ${d.correct}/${d.reviews}"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}</span></div>`).join('')}</div>
+    <div class="days">${s.days.map(d => `<div class="${d.goalMet ? 'day-goal-met' : ''}" title="${d.day}: ${d.correct}/${d.reviews} (+${d.newWords || 0} new)"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}${d.goalMet ? ' ✓' : ''}</span></div>`).join('')}</div>
   </section>`;
 }
 
@@ -381,11 +610,18 @@ function render() {
   const activeSearch = document.activeElement?.id === 'search-input';
   const selStart = activeSearch ? document.activeElement.selectionStart : null;
 
+  const isDailyCompleteView = studyMode === 'daily' && !extraPractice && s.dailyPlan?.goalMet && !card;
+
   view(`
-    <section class="stats">${[['score', s.score], ['streak', s.streak], ['due', s.dueNow], ['mastered', `${s.mastered}/${s.totalWords}`]]
-      .map(([k, v]) => `<div><b>${esc(v)}</b><span>${t(k)}</span></div>`).join('')}</section>
+    <section class="stats">${[
+      ['score', s.score],
+      ['dayStreak', `🔥 ${s.dayStreak || 0}`],
+      ['due', s.dueNow],
+      ['mastered', `${s.mastered}/${s.totalWords}`],
+    ].map(([k, v]) => `<div><b>${esc(v)}</b><span>${t(k)}</span></div>`).join('')}</section>
+    ${dailyPatternHtml()}
     ${controlsHtml()}
-    ${showingReports ? reportsPanelHtml() : (card ? cardHtml() : `<div class="panel">${t('noCards')}</div>`)}
+    ${showingReports ? reportsPanelHtml() : (isDailyCompleteView ? dailyDoneHtml() : (card ? cardHtml() : `<div class="panel">${t('noCards')}</div>`))}
     ${progressHtml()}
   `);
 
@@ -425,6 +661,15 @@ document.addEventListener('change', async e => {
     topic = localStorage.topic = e.target.value;
     queue = [];
     card = null;
+    await next();
+  } else if (e.target.id === 'level-select') {
+    level = localStorage.level = e.target.value;
+    queue = [];
+    card = null;
+    try {
+      const res = await api('settings', { targetLevel: level });
+      stats = res.stats;
+    } catch { /* ignore */ }
     await next();
   }
 });
@@ -467,6 +712,44 @@ document.addEventListener('click', async e => {
     queue = [];
     card = null;
     await next();
+  } else if (act === 'toggle-study-mode') {
+    studyMode = studyMode === 'daily' ? 'free' : 'daily';
+    localStorage.studyMode = studyMode;
+    extraPractice = false;
+    queue = [];
+    card = null;
+    await next();
+  } else if (act === 'extra-practice') {
+    extraPractice = true;
+    queue = [];
+    card = null;
+    await next();
+  } else if (act === 'toggle-plan') {
+    editingPlan = !editingPlan;
+    render();
+  } else if (act === 'preset-pace') {
+    const newInp = $('#plan-new');
+    const revInp = $('#plan-rev');
+    if (newInp) newInp.value = el.dataset.new;
+    if (revInp) revInp.value = el.dataset.rev;
+  } else if (act === 'save-plan') {
+    const newGoal = +($('#plan-new')?.value || 10);
+    const revGoal = +($('#plan-rev')?.value || 30);
+    const targetLvl = $('#plan-level')?.value || level;
+    await saveDailySettings(newGoal, revGoal, targetLvl);
+  } else if (act === 'select-level') {
+    const picked = el.dataset.level;
+    if (picked) {
+      level = localStorage.level = picked;
+      queue = [];
+      card = null;
+      try {
+        const res = await api('settings', { targetLevel: level });
+        stats = res.stats;
+      } catch { /* ignore */ }
+      await next();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   } else if (act === 'open-report') {
     e.stopPropagation();
     reporting = true;

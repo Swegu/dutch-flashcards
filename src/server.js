@@ -8,7 +8,10 @@ const BOX_DAYS = [0, 1, 3, 7, 14, 30, 60];
 const MASTERED_BOX = 5;
 const DAY = 86400000;
 const SESSION_MS = 30 * DAY;
+const DAILY_GOAL_BONUS = 50;
 const ALLOWED_TOPICS = new Set(['all', 'food', 'travel', 'home', 'work', 'health']);
+const CEFR_LEVELS = db.CEFR_LEVELS || ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+const ALLOWED_LEVELS = new Set(['auto', 'all', ...CEFR_LEVELS]);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -69,7 +72,11 @@ app.get('/api/status', (req, res) => res.json(importStatus()));
 app.post('/api/import/retry', (req, res) => { startImport(); res.json({}); });
 
 // ---------- helpers ----------
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const prevDayIso = dayStr => new Date(new Date(dayStr + 'T00:00:00Z').getTime() - DAY).toISOString().slice(0, 10);
+
 function formatCard(w) {
+  const isNew = !!w.isNew;
   return {
     id: w.id,
     word: w.word,
@@ -82,7 +89,9 @@ function formatCard(w) {
     exampleNl: w.example_nl,
     exampleEn: w.example_en,
     box: w.box ?? 0,
-    isNew: !!w.isNew,
+    isNew,
+    stage: w.stage || (isNew ? 'new' : 'due'),
+    level: w.level || 'C2',
     rank: w.rank ?? null,
     freq: w.freq ?? null,
     forms: w.forms ? JSON.parse(w.forms) : [],
@@ -100,65 +109,222 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
+function getLevelsBreakdown(uid, topic = 'all') {
+  const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
+  const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
+  const rows = db.prepare(`
+    SELECT w.level,
+           COUNT(*) AS total,
+           COALESCE(SUM(p.word_id IS NOT NULL), 0) AS learned,
+           COALESCE(SUM(p.box >= ?), 0) AS mastered,
+           COALESCE(SUM(CASE WHEN p.due <= ? THEN 1 ELSE 0 END), 0) AS due
+    FROM words w
+    LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
+    WHERE w.globally_skipped = 0
+      AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+      ${topicSql}
+    GROUP BY w.level
+  `).all(MASTERED_BOX, Date.now(), uid, uid, ...topicParams);
+
+  const byLevel = new Map(rows.map(r => [r.level, r]));
+  return CEFR_LEVELS.map(lvl => {
+    const r = byLevel.get(lvl) || { total: 0, learned: 0, mastered: 0, due: 0 };
+    return {
+      level: lvl,
+      total: r.total,
+      learned: r.learned,
+      mastered: r.mastered,
+      due: r.due,
+    };
+  });
+}
+
+function resolveActiveLevel(levelsBreakdown) {
+  for (const l of levelsBreakdown) {
+    if (l.total > 0 && l.learned / l.total < 0.8) return l.level;
+  }
+  for (const l of levelsBreakdown) {
+    if (l.total > l.learned) return l.level;
+  }
+  return 'C2';
+}
+
+function interleavePattern(dueCards, newCards, consolidateCards) {
+  const result = [];
+  let di = 0, ni = 0;
+  while (di < dueCards.length || ni < newCards.length) {
+    if (di < dueCards.length) result.push(dueCards[di++]);
+    if (di < dueCards.length) result.push(dueCards[di++]);
+    if (ni < newCards.length) result.push(newCards[ni++]);
+  }
+  for (const c of consolidateCards) result.push(c);
+  return result;
+}
+
 // ---------- cards & search ----------
 app.get('/api/cards', auth, (req, res) => {
   const limit = Math.min(+req.query.limit || 10, 30);
   const exclude = String(req.query.exclude || '').split(',').map(Number).filter(Number.isInteger);
   const topic = ALLOWED_TOPICS.has(req.query.topic) ? req.query.topic : 'all';
+  const requestedLevel = ALLOWED_LEVELS.has(req.query.level) ? req.query.level : (req.user.target_level || 'auto');
   const shuffle = req.query.shuffle !== '0';
+  const mode = req.query.mode === 'free' ? 'free' : 'daily';
+  const extra = req.query.extra === '1';
 
-  const ex = exclude.length ? `AND w.id NOT IN (${exclude.map(() => '?').join()})` : '';
-  const topicSql = topic !== 'all' ? `AND w.topics LIKE ?` : '';
-  const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
   const uid = req.user.id;
+  const now = Date.now();
+  const day = todayIso();
 
-  const duePoolLimit = shuffle ? Math.max(limit * 3, 25) : limit;
+  const exSql = exclude.length ? `AND w.id NOT IN (${exclude.map(() => '?').join()})` : '';
+  const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
+  const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
+
+  const levelsBreakdown = getLevelsBreakdown(uid, topic);
+  const activeLevel = requestedLevel === 'auto'
+    ? resolveActiveLevel(levelsBreakdown)
+    : (CEFR_LEVELS.includes(requestedLevel) ? requestedLevel : null);
+
+  // In 'auto' mode, due/consolidate reviews cover all learned words across any level, while new words target activeLevel
+  const strictLevelSql = CEFR_LEVELS.includes(requestedLevel) ? 'AND w.level = ?' : '';
+  const strictLevelParams = CEFR_LEVELS.includes(requestedLevel) ? [requestedLevel] : [];
+
+  let batchLimit = limit;
+  let maxNewInBatch = limit;
+
+  if (mode === 'daily' && !extra) {
+    const todayRow = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day)
+      || { reviews: 0, correct: 0, new_words: 0, goal_met: 0 };
+
+    const inQueueTotal = exclude.length;
+    const inQueueLearned = exclude.length
+      ? db.prepare(`SELECT COUNT(*) n FROM progress WHERE user_id=? AND word_id IN (${exclude.map(() => '?').join()})`).get(uid, ...exclude).n
+      : 0;
+    const inQueueNew = inQueueTotal - inQueueLearned;
+
+    const remNew = Math.max(0, req.user.daily_new_goal - todayRow.new_words - inQueueNew);
+    const remReviews = Math.max(0, req.user.daily_review_goal - todayRow.reviews - inQueueTotal);
+    const totalNeededToday = Math.max(remNew, remReviews);
+
+    if (totalNeededToday <= 0) return res.json([]);
+    batchLimit = Math.min(limit, totalNeededToday);
+    maxNewInBatch = Math.min(remNew, batchLimit);
+  } else {
+    // In free practice or extra mode, still interleave due cards with new words nicely
+    maxNewInBatch = batchLimit;
+  }
+
+  // Step 1: Fetch due cards
+  const duePoolLimit = shuffle ? Math.max(batchLimit * 3, 25) : batchLimit;
   const due = db.prepare(`
-    SELECT w.*, p.box, 0 AS isNew
+    SELECT w.*, p.box, 0 AS isNew, 'due' AS stage
     FROM progress p
     JOIN words w ON w.id = p.word_id
     WHERE p.user_id = ?
       AND p.due <= ?
       AND w.globally_skipped = 0
       AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+      ${strictLevelSql}
       ${topicSql}
-      ${ex}
+      ${exSql}
     ORDER BY (p.wrong > p.correct) DESC, p.box ASC, p.due ASC
     LIMIT ?
-  `).all(uid, Date.now(), uid, ...topicParams, ...exclude, duePoolLimit);
+  `).all(uid, now, uid, ...strictLevelParams, ...topicParams, ...exclude, duePoolLimit);
 
   if (shuffle && due.length > 1) {
-    // Keep struggled cards first, randomize within due batch
     const struggled = due.filter(c => c.wrong > c.correct);
     const normal = due.filter(c => c.wrong <= c.correct);
     shuffleInPlace(struggled);
     shuffleInPlace(normal);
     due.splice(0, due.length, ...struggled, ...normal);
   }
-  const pickedDue = due.slice(0, limit);
 
+  // Reserve slots for daily new words so users with many due cards still learn their daily new words
+  const reservedNewSlots = maxNewInBatch > 0
+    ? Math.min(maxNewInBatch, due.length > 0 ? Math.max(1, Math.ceil(batchLimit * 0.4)) : batchLimit)
+    : 0;
+  let pickedDue = due.slice(0, batchLimit - reservedNewSlots);
+
+  // Step 2: Fetch new words at target level
   let pickedFresh = [];
-  if (pickedDue.length < limit) {
-    const needed = limit - pickedDue.length;
-    // Windowed randomization: pull from top 45 next most-useful words so learners get variety without obscure junk
-    const freshPoolLimit = shuffle ? Math.max(needed * 4, 45) : needed;
-    const fresh = db.prepare(`
-      SELECT w.*, 0 AS box, 1 AS isNew
-      FROM words w
-      WHERE w.globally_skipped = 0
-        AND NOT EXISTS(SELECT 1 FROM progress p WHERE p.user_id = ? AND p.word_id = w.id)
-        AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
-        ${topicSql}
-        ${ex}
-      ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.id ASC
-      LIMIT ?
-    `).all(uid, uid, ...topicParams, ...exclude, freshPoolLimit);
+  const desiredNew = Math.min(maxNewInBatch, batchLimit - pickedDue.length);
+  if (desiredNew > 0) {
+    const fetchFreshForLevel = (lvl, neededCount, extraExcludeIds) => {
+      const allEx = [...exclude, ...extraExcludeIds];
+      const exClause = allEx.length ? `AND w.id NOT IN (${allEx.map(() => '?').join()})` : '';
+      const lvlClause = lvl ? 'AND w.level = ?' : '';
+      const lvlParams = lvl ? [lvl] : [];
+      const poolSize = shuffle ? Math.max(neededCount * 4, 45) : neededCount;
+      const rows = db.prepare(`
+        SELECT w.*, 0 AS box, 1 AS isNew, 'new' AS stage
+        FROM words w
+        WHERE w.globally_skipped = 0
+          AND NOT EXISTS(SELECT 1 FROM progress p WHERE p.user_id = ? AND p.word_id = w.id)
+          AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+          ${lvlClause}
+          ${topicSql}
+          ${exClause}
+        ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.id ASC
+        LIMIT ?
+      `).all(uid, uid, ...lvlParams, ...topicParams, ...allEx, poolSize);
+      if (shuffle && rows.length > 1) shuffleInPlace(rows);
+      return rows.slice(0, neededCount);
+    };
 
-    if (shuffle && fresh.length > 1) shuffleInPlace(fresh);
-    pickedFresh = fresh.slice(0, needed);
+    if (requestedLevel === 'auto' && activeLevel) {
+      // Pull from activeLevel first; if exhausted, cascade through subsequent CEFR levels
+      const startIdx = Math.max(0, CEFR_LEVELS.indexOf(activeLevel));
+      for (let i = startIdx; i < CEFR_LEVELS.length && pickedFresh.length < desiredNew; i++) {
+        const more = fetchFreshForLevel(
+          CEFR_LEVELS[i],
+          desiredNew - pickedFresh.length,
+          pickedFresh.map(c => c.id)
+        );
+        pickedFresh.push(...more);
+      }
+    } else {
+      pickedFresh = fetchFreshForLevel(
+        CEFR_LEVELS.includes(requestedLevel) ? requestedLevel : null,
+        desiredNew,
+        []
+      );
+    }
   }
 
-  res.json([...pickedDue, ...pickedFresh].map(formatCard));
+  // If fewer fresh cards were found than reserved, top up with any remaining due cards
+  if (pickedDue.length + pickedFresh.length < batchLimit && due.length > pickedDue.length) {
+    const extraDueNeeded = batchLimit - (pickedDue.length + pickedFresh.length);
+    pickedDue.push(...due.slice(pickedDue.length, pickedDue.length + extraDueNeeded));
+  }
+
+  // Step 3: Consolidation stage — if daily review quota still needs cards (or free mode has no unseen words left),
+  // reinforce recently learned / low-box words
+  let pickedConsolidate = [];
+  if (pickedDue.length + pickedFresh.length < batchLimit) {
+    const neededConsolidate = batchLimit - (pickedDue.length + pickedFresh.length);
+    const allUsedIds = [...exclude, ...pickedDue.map(c => c.id), ...pickedFresh.map(c => c.id)];
+    const usedClause = allUsedIds.length ? `AND w.id NOT IN (${allUsedIds.map(() => '?').join()})` : '';
+    const consPoolLimit = shuffle ? Math.max(neededConsolidate * 3, 20) : neededConsolidate;
+
+    const cons = db.prepare(`
+      SELECT w.*, p.box, 0 AS isNew, 'consolidate' AS stage
+      FROM progress p
+      JOIN words w ON w.id = p.word_id
+      WHERE p.user_id = ?
+        AND w.globally_skipped = 0
+        AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+        ${strictLevelSql}
+        ${topicSql}
+        ${usedClause}
+      ORDER BY p.box ASC, (p.wrong > p.correct) DESC, p.due ASC
+      LIMIT ?
+    `).all(uid, uid, ...strictLevelParams, ...topicParams, ...allUsedIds, consPoolLimit);
+
+    if (shuffle && cons.length > 1) shuffleInPlace(cons);
+    pickedConsolidate = cons.slice(0, neededConsolidate);
+  }
+
+  const ordered = interleavePattern(pickedDue, pickedFresh, pickedConsolidate);
+  res.json(ordered.map(formatCard));
 });
 
 app.get('/api/word/:term', auth, (req, res) => {
@@ -211,6 +377,31 @@ app.get('/api/translation/:id', auth, async (req, res) => {
     }
   } catch { /* fall through */ }
   res.json({ text: '' });
+});
+
+// ---------- daily plan & level settings ----------
+app.post('/api/settings', auth, (req, res) => {
+  const uid = req.user.id;
+  const rawNew = Number(req.body?.dailyNewGoal);
+  const rawRev = Number(req.body?.dailyReviewGoal);
+  const rawLvl = String(req.body?.targetLevel || '');
+
+  const dailyNewGoal = Number.isFinite(rawNew) ? Math.max(1, Math.min(100, Math.round(rawNew))) : req.user.daily_new_goal;
+  const dailyReviewGoal = Number.isFinite(rawRev) ? Math.max(dailyNewGoal, Math.min(500, Math.round(rawRev))) : req.user.daily_review_goal;
+  const targetLevel = ALLOWED_LEVELS.has(rawLvl) ? rawLvl : req.user.target_level;
+
+  const day = todayIso();
+  db.transaction(() => {
+    db.prepare('UPDATE users SET daily_new_goal=?, daily_review_goal=?, target_level=? WHERE id=?')
+      .run(dailyNewGoal, dailyReviewGoal, targetLevel, uid);
+    const todayRow = db.prepare('SELECT reviews, new_words FROM daily WHERE user_id=? AND day=?').get(uid, day);
+    if (todayRow) {
+      const met = (todayRow.new_words >= dailyNewGoal && todayRow.reviews >= dailyReviewGoal) ? 1 : 0;
+      db.prepare('UPDATE daily SET goal_met = MAX(goal_met, ?) WHERE user_id=? AND day=?').run(met, uid, day);
+    }
+  })();
+
+  res.json({ stats: getStats(uid) });
 });
 
 // ---------- reporting & global skip review ----------
@@ -269,19 +460,42 @@ app.post('/api/reports/:wordId/resolve', auth, (req, res) => {
 
 // ---------- reviews, undo & stats ----------
 function getStats(uid) {
-  const u = db.prepare('SELECT score, streak, best_streak FROM users WHERE id=?').get(uid);
+  const u = db.prepare(`
+    SELECT score, streak, best_streak, daily_new_goal, daily_review_goal, target_level,
+           day_streak, best_day_streak, last_study_day
+    FROM users WHERE id=?
+  `).get(uid);
+
   const agg = db.prepare(`
     SELECT COUNT(*) learned, COALESCE(SUM(box>=?),0) mastered, COALESCE(SUM(correct),0) c, COALESCE(SUM(wrong),0) w
     FROM progress p
     JOIN words w ON w.id = p.word_id
     WHERE p.user_id=? AND w.globally_skipped = 0
   `).get(MASTERED_BOX, uid);
-  const day = new Date().toISOString().slice(0, 10);
+
+  const day = todayIso();
+  const yesterday = prevDayIso(day);
+  const activeDayStreak = (u.last_study_day === day || u.last_study_day === yesterday) ? u.day_streak : 0;
+
   const openReports = db.prepare("SELECT COUNT(DISTINCT word_id) n FROM reports WHERE status='open'").get().n;
+  const todayRow = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day)
+    || { reviews: 0, correct: 0, new_words: 0, goal_met: 0 };
+
+  const levels = getLevelsBreakdown(uid);
+  const autoLevel = resolveActiveLevel(levels);
+  const activeLevel = u.target_level === 'auto' ? autoLevel : u.target_level;
+
+  const goalMet = Boolean(
+    todayRow.goal_met ||
+    (todayRow.new_words >= u.daily_new_goal && todayRow.reviews >= u.daily_review_goal)
+  );
+
   return {
     score: u.score,
     streak: u.streak,
     bestStreak: u.best_streak,
+    dayStreak: activeDayStreak,
+    bestDayStreak: u.best_day_streak || 0,
     totalWords: db.prepare('SELECT COUNT(*) n FROM words WHERE globally_skipped = 0').get().n,
     openReports,
     learned: agg.learned,
@@ -293,8 +507,31 @@ function getStats(uid) {
       WHERE p.user_id=? AND p.due<=? AND w.globally_skipped = 0
         AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id=? AND us.word_id=w.id)
     `).get(uid, Date.now(), uid).n,
-    today: db.prepare('SELECT reviews, correct FROM daily WHERE user_id=? AND day=?').get(uid, day) || { reviews: 0, correct: 0 },
-    days: db.prepare('SELECT day, reviews, correct FROM (SELECT * FROM daily WHERE user_id=? ORDER BY day DESC LIMIT 7) ORDER BY day').all(uid),
+    today: {
+      reviews: todayRow.reviews,
+      correct: todayRow.correct,
+      newWords: todayRow.new_words,
+      goalMet,
+    },
+    dailyPlan: {
+      dailyNewGoal: u.daily_new_goal,
+      dailyReviewGoal: u.daily_review_goal,
+      targetLevel: u.target_level || 'auto',
+      activeLevel,
+      autoLevel,
+      newToday: todayRow.new_words,
+      reviewsToday: todayRow.reviews,
+      correctToday: todayRow.correct,
+      goalMet,
+      newProgressPct: Math.min(100, Math.round((todayRow.new_words / Math.max(1, u.daily_new_goal)) * 100)),
+      reviewProgressPct: Math.min(100, Math.round((todayRow.reviews / Math.max(1, u.daily_review_goal)) * 100)),
+    },
+    levels,
+    days: db.prepare(`
+      SELECT day, reviews, correct, new_words AS newWords, goal_met AS goalMet
+      FROM (SELECT * FROM daily WHERE user_id=? ORDER BY day DESC LIMIT 7)
+      ORDER BY day
+    `).all(uid),
   };
 }
 
@@ -306,36 +543,82 @@ app.post('/api/review', auth, (req, res) => {
   if (!Number.isInteger(wordId) || ![0, 1, 2].includes(rating)) return res.status(400).json({ error: 'Bad request' });
   if (!db.prepare('SELECT 1 FROM words WHERE id=?').get(wordId)) return res.status(404).json({ error: 'Unknown word' });
 
-  const uid = req.user.id, now = Date.now(), day = new Date().toISOString().slice(0, 10);
+  const uid = req.user.id, now = Date.now(), day = todayIso();
   const prevProgress = db.prepare('SELECT box, due, correct, wrong FROM progress WHERE user_id=? AND word_id=?').get(uid, wordId) || null;
-  const prevUser = { score: req.user.score, streak: req.user.streak, bestStreak: req.user.best_streak };
+  const prevDaily = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day) || null;
+  const prevUser = {
+    score: req.user.score,
+    streak: req.user.streak,
+    bestStreak: req.user.best_streak,
+    dayStreak: req.user.day_streak || 0,
+    bestDayStreak: req.user.best_day_streak || 0,
+    lastStudyDay: req.user.last_study_day || null,
+  };
 
+  const isFirstReview = !prevProgress;
   const curBox = prevProgress ? prevProgress.box : 0;
   const box = rating === 0 ? 0 : Math.min(BOX_DAYS.length - 1, curBox + rating);
   const due = rating === 0 ? now + 10 * 60000 : now + BOX_DAYS[box] * DAY;
-  const gained = rating === 0 ? 0 : (rating === 1 ? 10 : 15) + Math.min(req.user.streak, 10) * 2;
+  const baseGained = rating === 0 ? 0 : (rating === 1 ? 10 : 15) + Math.min(req.user.streak, 10) * 2;
   const streak = rating === 0 ? 0 : req.user.streak + 1;
   const ok = rating === 0 ? 0 : 1;
+
+  // Daily study streak calculation
+  const yesterday = prevDayIso(day);
+  let dayStreak = prevUser.dayStreak;
+  if (prevUser.lastStudyDay === day) {
+    dayStreak = Math.max(1, dayStreak);
+  } else if (prevUser.lastStudyDay === yesterday) {
+    dayStreak = dayStreak + 1;
+  } else {
+    dayStreak = 1;
+  }
+  const bestDayStreak = Math.max(prevUser.bestDayStreak, dayStreak);
+
+  const nextReviews = (prevDaily?.reviews || 0) + 1;
+  const nextNewWords = (prevDaily?.new_words || 0) + (isFirstReview ? 1 : 0);
+  const wasGoalMet = Boolean(prevDaily?.goal_met);
+  const isGoalMetNow = wasGoalMet || (nextNewWords >= req.user.daily_new_goal && nextReviews >= req.user.daily_review_goal);
+  const dailyGoalJustMet = !wasGoalMet && isGoalMetNow;
+  const gained = baseGained + (dailyGoalJustMet ? DAILY_GOAL_BONUS : 0);
 
   db.transaction(() => {
     db.prepare(`
       INSERT INTO progress(user_id,word_id,box,due,correct,wrong) VALUES(?,?,?,?,?,?)
       ON CONFLICT(user_id,word_id) DO UPDATE SET box=?, due=?, correct=correct+?, wrong=wrong+?
     `).run(uid, wordId, box, due, ok, 1 - ok, box, due, ok, 1 - ok);
-    db.prepare('UPDATE users SET score=score+?, streak=?, best_streak=MAX(best_streak,?) WHERE id=?').run(gained, streak, streak, uid);
-    db.prepare(`INSERT INTO daily VALUES(?,?,1,?) ON CONFLICT(user_id,day) DO UPDATE SET reviews=reviews+1, correct=correct+?`)
-      .run(uid, day, ok, ok);
+
+    db.prepare(`
+      UPDATE users
+      SET score=score+?, streak=?, best_streak=MAX(best_streak,?),
+          day_streak=?, best_day_streak=?, last_study_day=?
+      WHERE id=?
+    `).run(gained, streak, streak, dayStreak, bestDayStreak, day, uid);
+
+    db.prepare(`
+      INSERT INTO daily(user_id, day, reviews, correct, new_words, goal_met)
+      VALUES(?, ?, 1, ?, ?, ?)
+      ON CONFLICT(user_id, day) DO UPDATE SET
+        reviews = reviews + 1,
+        correct = correct + ?,
+        new_words = new_words + ?,
+        goal_met = MAX(goal_met, ?)
+    `).run(
+      uid, day, ok, isFirstReview ? 1 : 0, isGoalMetNow ? 1 : 0,
+      ok, isFirstReview ? 1 : 0, isGoalMetNow ? 1 : 0
+    );
   })();
 
   res.json({
     gained,
-    undoToken: { wordId, day, ok, prevProgress, prevUser },
+    dailyGoalJustMet,
+    undoToken: { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevUser },
     stats: getStats(uid),
   });
 });
 
 app.post('/api/review/undo', auth, (req, res) => {
-  const { wordId, day, ok, prevProgress, prevUser } = req.body || {};
+  const { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevUser } = req.body || {};
   if (!Number.isInteger(wordId) || !prevUser) return res.status(400).json({ error: 'Invalid undo payload' });
   const uid = req.user.id;
   db.transaction(() => {
@@ -345,11 +628,30 @@ app.post('/api/review/undo', auth, (req, res) => {
     } else {
       db.prepare('DELETE FROM progress WHERE user_id=? AND word_id=?').run(uid, wordId);
     }
-    db.prepare('UPDATE users SET score=?, streak=?, best_streak=? WHERE id=?')
-      .run(prevUser.score, prevUser.streak, prevUser.bestStreak, uid);
+    db.prepare(`
+      UPDATE users
+      SET score=?, streak=?, best_streak=?,
+          day_streak=COALESCE(?, day_streak),
+          best_day_streak=COALESCE(?, best_day_streak),
+          last_study_day=?
+      WHERE id=?
+    `).run(
+      prevUser.score,
+      prevUser.streak,
+      prevUser.bestStreak,
+      prevUser.dayStreak ?? null,
+      prevUser.bestDayStreak ?? null,
+      prevUser.lastStudyDay ?? null,
+      uid
+    );
     if (day) {
-      db.prepare('UPDATE daily SET reviews=MAX(0,reviews-1), correct=MAX(0,correct-?) WHERE user_id=? AND day=?')
-        .run(ok ? 1 : 0, uid, day);
+      if (prevDaily) {
+        db.prepare('UPDATE daily SET reviews=?, correct=?, new_words=?, goal_met=? WHERE user_id=? AND day=?')
+          .run(prevDaily.reviews, prevDaily.correct, prevDaily.new_words, prevDaily.goal_met, uid, day);
+      } else {
+        db.prepare('UPDATE daily SET reviews=MAX(0,reviews-1), correct=MAX(0,correct-?), new_words=MAX(0,new_words-?) WHERE user_id=? AND day=?')
+          .run(ok ? 1 : 0, isFirstReview ? 1 : 0, uid, day);
+      }
     }
   })();
   res.json({ stats: getStats(uid) });
@@ -357,4 +659,8 @@ app.post('/api/review/undo', auth, (req, res) => {
 
 db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now());
 startImport();
-app.listen(process.env.PORT || 3000, () => console.log('Listening on :' + (process.env.PORT || 3000)));
+if (require.main === module) {
+  app.listen(process.env.PORT || 3000, () => console.log('Listening on :' + (process.env.PORT || 3000)));
+}
+
+module.exports = app;
