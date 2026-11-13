@@ -111,6 +111,18 @@ CREATE TABLE IF NOT EXISTS daily(
   PRIMARY KEY(user_id, day)
 );
 
+CREATE TABLE IF NOT EXISTS daily_words(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  is_new INTEGER NOT NULL DEFAULT 0,
+  last_rating INTEGER NOT NULL DEFAULT 1,
+  reviews INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(user_id, day, word_id)
+);
+CREATE INDEX IF NOT EXISTS daily_words_day ON daily_words(user_id, day, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS reports(
   id INTEGER PRIMARY KEY,
   word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,

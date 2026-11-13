@@ -3,7 +3,7 @@ const T = {
   logout: 'Log out', show: 'Show answer', again: 'Again', good: 'Good', easy: 'Easy', score: 'Score', streak: 'Streak',
   dayStreak: 'Day streak', answerStreak: 'Answer streak',
   best: 'Best streak', learned: 'Words started', mastered: 'Mastered', accuracy: 'Accuracy', today: 'Today', due: 'Due now',
-  last7: 'Last 7 days', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: '🌱 New', loading: 'Loading…',
+  last7: 'Last 7 days (click a day to inspect words)', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: '🌱 New', loading: 'Loading…',
   importing: 'Preparing the Dutch dictionary… first start only, this can take a few minutes.', retry: 'Retry',
   source: 'Source', rank: 'frequency rank', unranked: 'Unranked (Wiktionary)',
   haveAccount: 'Already have an account? Log in', noAccount: 'No account yet? Create one', err: 'Something went wrong',
@@ -21,6 +21,12 @@ const T = {
   stepNew: '🌱 New words', stepReviews: '🔄 Reviews', stepGoal: '🎯 Today',
   goalReady: 'In progress', goalCompleteBadge: '✓ Daily goal met',
   planSettings: '⚙️ Plan',
+  inspectWordsBtn: '📋 Words',
+  inspectCompletedBtn: '📋 Inspect Completed Words',
+  dailyWordsTitle: 'Completed Words',
+  noDailyWords: 'No words completed on this day yet.',
+  filterAll: 'All', filterNew: '🌱 New', filterReviewed: '🔄 Reviewed',
+  openCard: 'Open card',
   paceLight: '🐢 Casual (5 / 15)', paceRegular: '🚶 Regular (10 / 30)', paceIntensive: '🚀 Intensive (20 / 60)',
   newPerDay: 'New words / day', reviewsPerDay: 'Total reviews / day', targetLevelLabel: 'Difficulty level',
   savePlan: 'Save daily plan', planSavedToast: 'Daily learning plan updated.',
@@ -61,6 +67,7 @@ let editingPlan = false;
 let shuffle = localStorage.shuffle !== '0'; // enabled by default
 let stats, queue = [], card = null, flipped = false, gain = 0, mode = 'login', authErr = '';
 let reporting = false, showingReports = false, reportsList = [];
+let showingDailyWords = false, dailyWordsDay = '', dailyWordsList = [], dailyWordsFilter = 'all';
 let searchQuery = '', searchResults = [], searchTimer = null;
 let lastUndo = null, lastReviewedCard = null, toastTimer = null;
 
@@ -110,7 +117,7 @@ async function start() {
   if (stats.dailyPlan?.targetLevel) {
     level = localStorage.level = stats.dailyPlan.targetLevel;
   }
-  queue = []; card = null; showingReports = false; reporting = false; editingPlan = false; extraPractice = false;
+  queue = []; card = null; showingReports = false; showingDailyWords = false; reporting = false; editingPlan = false; extraPractice = false;
   $('#logout').hidden = false;
   updateHeaderBadges();
   await next();
@@ -156,6 +163,7 @@ async function jumpToWord(wordStr) {
     flipped = false;
     reporting = false;
     showingReports = false;
+    showingDailyWords = false;
     searchQuery = '';
     searchResults = [];
     render();
@@ -235,6 +243,21 @@ async function saveDailySettings(newGoal, revGoal, targetLvl) {
   }
 }
 
+async function openDailyWords(day = '') {
+  showingDailyWords = true;
+  showingReports = false;
+  render();
+  try {
+    const qs = day ? `?day=${encodeURIComponent(day)}` : '';
+    const res = await api(`daily-words${qs}`);
+    dailyWordsDay = res.day;
+    dailyWordsList = res.words || [];
+  } catch {
+    dailyWordsList = [];
+  }
+  render();
+}
+
 async function submitReport(reason) {
   if (!card) return;
   const reportedId = card.id;
@@ -252,6 +275,7 @@ async function submitReport(reason) {
 
 async function openReportsView() {
   showingReports = true;
+  showingDailyWords = false;
   render();
   try {
     reportsList = await api('reports');
@@ -281,6 +305,7 @@ function dailyPatternHtml() {
     ? `${t('levels').auto} (${dp.autoLevel})`
     : (t('levels')[dp.targetLevel] || dp.targetLevel);
   const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
+  const completedCount = dp.completedWordsToday ?? dp.newToday ?? 0;
 
   const settingsDrawer = editingPlan ? `
     <div class="plan-drawer">
@@ -320,6 +345,9 @@ function dailyPatternHtml() {
         <span class="pill level-badge level-${esc(dp.activeLevel === 'all' ? 'A1' : dp.activeLevel)}">${esc(activeLvlLabel)}</span>
       </div>
       <div class="daily-actions">
+        <button type="button" class="${showingDailyWords ? 'active' : ''}" data-act="toggle-daily-words">
+          ${t('inspectWordsBtn')} (${completedCount})
+        </button>
         <button type="button" class="${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
           ${t(studyMode === 'daily' ? 'modeDaily' : 'modeFree')}
         </button>
@@ -353,6 +381,56 @@ function dailyPatternHtml() {
   </section>`;
 }
 
+function dailyWordsPanelHtml() {
+  const newCount = dailyWordsList.filter(w => w.learnedToday).length;
+  const revCount = dailyWordsList.length - newCount;
+  const filtered = dailyWordsList.filter(w => {
+    if (dailyWordsFilter === 'new') return w.learnedToday;
+    if (dailyWordsFilter === 'review') return !w.learnedToday;
+    return true;
+  });
+
+  const dayTabs = (stats.days || []).map(d => `
+    <button type="button" class="pill-btn ${dailyWordsDay === d.day ? 'active' : ''}" data-act="inspect-day" data-day="${esc(d.day)}">
+      ${esc(d.day.slice(5))}${d.goalMet ? ' ✓' : ''}
+    </button>
+  `).join('');
+
+  const ratingLabel = r => [t('again'), t('good'), t('easy')][r] || t('good');
+  const ratingClass = r => ['rate-bad', 'rate-ok', 'rate-good'][r] || 'rate-ok';
+
+  return `<section class="panel">
+    <div class="panel-head">
+      <h2>📋 ${t('dailyWordsTitle')} <span class="muted">(${esc(dailyWordsDay || t('today'))})</span></h2>
+      <button type="button" data-act="close-daily-words">✕</button>
+    </div>
+    <div class="daily-words-toolbar">
+      <div class="filter-tabs">
+        <button type="button" class="${dailyWordsFilter === 'all' ? 'active' : ''}" data-act="filter-daily-words" data-filter="all">${t('filterAll')} (${dailyWordsList.length})</button>
+        <button type="button" class="${dailyWordsFilter === 'new' ? 'active' : ''}" data-act="filter-daily-words" data-filter="new">${t('filterNew')} (${newCount})</button>
+        <button type="button" class="${dailyWordsFilter === 'review' ? 'active' : ''}" data-act="filter-daily-words" data-filter="review">${t('filterReviewed')} (${revCount})</button>
+      </div>
+      ${dayTabs ? `<div class="day-pills">${dayTabs}</div>` : ''}
+    </div>
+    ${!filtered.length ? `<p class="muted">${t('noDailyWords')}</p>` : `<div class="daily-words-list">${filtered.map(w => `
+      <div class="daily-word-item">
+        <div class="daily-word-main">
+          <div class="badges">
+            <span class="pill level-badge level-${esc(w.level || 'C2')}">${esc(w.level || 'C2')}</span>
+            ${w.learnedToday ? `<span class="tag">${t('newWord')}</span>` : `<span class="pill">${t('boxLabel')} ${w.box}</span>`}
+            <span class="pill ${ratingClass(w.lastRating)}">${esc(ratingLabel(w.lastRating))}${w.todayReviews > 1 ? ` ×${w.todayReviews}` : ''}</span>
+            <strong class="daily-word-term">${w.article ? `<span class="article-inline">${esc(w.article)}</span> ` : ''}${esc(w.word)}</strong>
+            <span class="muted small">${esc(w.pos || '')} ${esc(w.ipa || '')}</span>
+          </div>
+          <div class="daily-word-gloss">${w.glosses.map(esc).join('; ')}</div>
+          ${w.exampleNl ? `<div class="muted small"><i>${esc(w.exampleNl)}</i> — ${esc(w.exampleEn || '')}</div>` : ''}
+        </div>
+        <button type="button" class="small-btn" data-act="jump" data-word="${esc(w.word)}">${t('openCard')}</button>
+      </div>
+    `).join('')}</div>`}
+  </section>`;
+}
+
 function controlsHtml() {
   const dp = stats.dailyPlan;
   const levelOpts = Object.entries(t('levels'))
@@ -369,7 +447,7 @@ function controlsHtml() {
   return `<section class="controls">
     <select id="level-select" aria-label="Difficulty level">${levelOpts}</select>
     <select id="topic-select" aria-label="Topic">${topicOpts}</select>
-    <button id="shuffle-toggle" class="${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
+    <button type="button" id="shuffle-toggle" class="${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
     <div class="search-wrap">
       <input id="search-input" type="search" value="${esc(searchQuery)}" placeholder="${t('searchPlaceholder')}" autocomplete="off">
       ${searchResults.length ? `<div class="search-drop">${searchResults.map(r => `
@@ -387,6 +465,7 @@ function controlsHtml() {
 function dailyDoneHtml() {
   const dp = stats.dailyPlan;
   const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
+  const completedCount = dp.completedWordsToday ?? dp.newToday ?? 0;
   return `<section class="panel daily-done">
     <h2>${t('dailyDoneTitle')}</h2>
     <p class="muted">${t('dailyDoneDesc')}</p>
@@ -398,6 +477,7 @@ function dailyDoneHtml() {
     </div>
     <div class="row-actions center-actions">
       <button type="button" class="primary" data-act="extra-practice">${t('continueExtra')}</button>
+      <button type="button" data-act="toggle-daily-words">${t('inspectCompletedBtn')} (${completedCount})</button>
       <button type="button" data-act="toggle-plan">${t('adjustPlan')}</button>
     </div>
   </section>`;
@@ -450,8 +530,8 @@ function cardHtml() {
       <p class="muted">${t('reportHint')}</p>
       <input id="report-reason" placeholder="${t('reportPlaceholder')}" maxlength="200">
       <div class="row-actions">
-        <button class="danger" data-act="send-report">${t('sendReport')}</button>
-        <button data-act="cancel-report">${t('cancel')}</button>
+        <button type="button" class="danger" data-act="send-report">${t('sendReport')}</button>
+        <button type="button" data-act="cancel-report">${t('cancel')}</button>
       </div>
     </div>` : '';
 
@@ -465,7 +545,7 @@ function cardHtml() {
         </div>
         <div class="card-actions">
           ${gain ? `<span class="gain">+${gain}</span>` : ''}
-          <button class="icon report-btn" data-act="open-report" title="${t('report')}">🚩</button>
+          <button type="button" class="icon report-btn" data-act="open-report" title="${t('report')}">🚩</button>
         </div>
       </div>
 
@@ -473,22 +553,21 @@ function cardHtml() {
 
       <div class="word">
         ${flipped && c.article ? `<span class="article">${esc(c.article)}</span> ` : ''}${esc(c.word)}
-        <button class="icon" data-act="speak" title="🔊">🔊</button>
       </div>
 
       <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
 
-      ${reporting ? reportModal : (flipped ? back : `<div><button class="primary" data-act="flip">${t('show')}</button></div>`)}
+      ${reporting ? reportModal : (flipped ? back : `<div><button type="button" class="primary" data-act="flip">${t('show')}</button></div>`)}
     </div>
     ${flipped && !reporting ? `<div class="rate">${[['again', 0], ['good', 1], ['easy', 2]]
-      .map(([k, r]) => `<button data-act="rate" data-r="${r}">${t(k)} <small>${r + 1}</small></button>`).join('')}</div>` : ''}`;
+      .map(([k, r]) => `<button type="button" data-act="rate" data-r="${r}">${t(k)} <small>${r + 1}</small></button>`).join('')}</div>` : ''}`;
 }
 
 function reportsPanelHtml() {
   return `<section class="panel">
     <div class="panel-head">
       <h2>🚩 ${t('reviewReports')}</h2>
-      <button data-act="close-reports">✕</button>
+      <button type="button" data-act="close-reports">✕</button>
     </div>
     ${!reportsList.length ? `<p class="muted">${t('noReports')}</p>` : reportsList.map(r => `
       <div class="report-item">
@@ -499,8 +578,8 @@ function reportsPanelHtml() {
           ${r.reasons.length ? `<div class="muted small">“${r.reasons.map(esc).join('”, “')}”</div>` : ''}
         </div>
         <div class="row-actions">
-          <button class="danger" data-act="resolve-report" data-id="${r.id}" data-resolution="skip_all">${t('skipEveryone')}</button>
-          <button data-act="resolve-report" data-id="${r.id}" data-resolution="dismiss">${t('keepWord')}</button>
+          <button type="button" class="danger" data-act="resolve-report" data-id="${r.id}" data-resolution="skip_all">${t('skipEveryone')}</button>
+          <button type="button" data-act="resolve-report" data-id="${r.id}" data-resolution="dismiss">${t('keepWord')}</button>
         </div>
       </div>
     `).join('')}
@@ -529,7 +608,7 @@ function progressHtml() {
     <div class="bar"><i style="width:${pct(s.mastered, s.totalWords)}%"></i><i class="l" style="width:${pct(s.learned - s.mastered, s.totalWords)}%"></i></div>
     ${levelsHtml ? `<h3>${t('levelsTitle')}</h3><div class="levels-grid">${levelsHtml}</div>` : ''}
     <h3>${t('last7')}</h3>
-    <div class="days">${s.days.map(d => `<div class="${d.goalMet ? 'day-goal-met' : ''}" title="${d.day}: ${d.correct}/${d.reviews} (+${d.newWords || 0} new)"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}${d.goalMet ? ' ✓' : ''}</span></div>`).join('')}</div>
+    <div class="days">${s.days.map(d => `<div class="day-col ${d.goalMet ? 'day-goal-met' : ''}" data-act="inspect-day" data-day="${esc(d.day)}" title="${d.day}: ${d.correct}/${d.reviews} (+${d.newWords || 0} new) — click to inspect"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}${d.goalMet ? ' ✓' : ''}</span></div>`).join('')}</div>
   </section>`;
 }
 
@@ -539,6 +618,12 @@ function render() {
   const selStart = activeSearch ? document.activeElement.selectionStart : null;
 
   const isDailyCompleteView = studyMode === 'daily' && !extraPractice && s.dailyPlan?.goalMet && !card;
+  let mainContent = '';
+  if (showingReports) mainContent = reportsPanelHtml();
+  else if (showingDailyWords) mainContent = dailyWordsPanelHtml();
+  else if (isDailyCompleteView) mainContent = dailyDoneHtml();
+  else if (card) mainContent = cardHtml();
+  else mainContent = `<div class="panel">${t('noCards')}</div>`;
 
   view(`
     <section class="stats">${[
@@ -549,7 +634,7 @@ function render() {
     ].map(([k, v]) => `<div><b>${esc(v)}</b><span>${t(k)}</span></div>`).join('')}</section>
     ${dailyPatternHtml()}
     ${controlsHtml()}
-    ${showingReports ? reportsPanelHtml() : (isDailyCompleteView ? dailyDoneHtml() : (card ? cardHtml() : `<div class="panel">${t('noCards')}</div>`))}
+    ${mainContent}
     ${progressHtml()}
   `);
 
@@ -626,15 +711,10 @@ document.addEventListener('click', async e => {
   const act = el.dataset.act;
 
   if (act === 'flip') {
-    if (e.target.closest('button, a, input')) return;
+    if (el.tagName !== 'BUTTON' && e.target.closest('button, a, input')) return;
     flip();
   } else if (act === 'rate') rate(+el.dataset.r);
-  else if (act === 'speak') {
-    e.stopPropagation();
-    const u = new SpeechSynthesisUtterance(card.word);
-    u.lang = 'nl-NL';
-    speechSynthesis.speak(u);
-  } else if (act === 'toggle-shuffle') {
+  else if (act === 'toggle-shuffle') {
     shuffle = !shuffle;
     localStorage.shuffle = shuffle ? '1' : '0';
     queue = [];
@@ -644,14 +724,32 @@ document.addEventListener('click', async e => {
     studyMode = studyMode === 'daily' ? 'free' : 'daily';
     localStorage.studyMode = studyMode;
     extraPractice = false;
+    showingDailyWords = false;
     queue = [];
     card = null;
     await next();
   } else if (act === 'extra-practice') {
     extraPractice = true;
+    showingDailyWords = false;
     queue = [];
     card = null;
     await next();
+  } else if (act === 'toggle-daily-words') {
+    if (showingDailyWords) {
+      showingDailyWords = false;
+      render();
+    } else {
+      await openDailyWords('');
+    }
+  } else if (act === 'close-daily-words') {
+    showingDailyWords = false;
+    render();
+  } else if (act === 'inspect-day') {
+    await openDailyWords(el.dataset.day || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (act === 'filter-daily-words') {
+    dailyWordsFilter = el.dataset.filter || 'all';
+    render();
   } else if (act === 'toggle-plan') {
     editingPlan = !editingPlan;
     render();
@@ -669,6 +767,7 @@ document.addEventListener('click', async e => {
     const picked = el.dataset.level;
     if (picked) {
       level = localStorage.level = picked;
+      showingDailyWords = false;
       queue = [];
       card = null;
       try {
@@ -729,7 +828,7 @@ document.addEventListener('keydown', e => {
     undoLast();
     return;
   }
-  if (!card || showingReports || reporting) return;
+  if (!card || showingReports || showingDailyWords || reporting) return;
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); }
   else if (['1', '2', '3'].includes(e.key)) rate(+e.key - 1);
   else if (e.key === 'r' || e.key === 'R') { reporting = true; render(); $('#report-reason')?.focus(); }

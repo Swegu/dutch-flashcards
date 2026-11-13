@@ -35,6 +35,7 @@ Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and pr
 
 - **Daily Learn Pattern**:
   - **3-Stage Interleaved Session**: Each daily session interleaves **Due Reviews** (`🔄 Due`), **Daily New Level Words** (`🌱 New`, capped at your daily new-word goal), and **Consolidation** (`🧠 Consolidate`, reinforcing low-box words when needed to complete your daily review goal).
+  - **Inspect Completed Daily Words**: Click **📋 Words** in the Daily Learn Pattern panel (or click any day bar in the 7-day chart) to inspect all words completed on that day, filter by **New** vs **Reviewed**, and jump directly to any card.
   - **Configurable Daily Pace**: Choose between **Casual** (`5 new / 15 reviews`), **Regular** (`10 new / 30 reviews`), **Intensive** (`20 new / 60 reviews`), or custom daily targets.
   - **Day Streak & Completion Bonus**: Tracks consecutive study days (`🔥 Day streak`) and awards a `+50` score bonus when both daily new-word and review targets are met, with an option to continue in **Free Practice / Extra Practice** mode.
 

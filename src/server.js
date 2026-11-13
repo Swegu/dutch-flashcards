@@ -457,6 +457,7 @@ function getStats(uid) {
   const openReports = db.prepare("SELECT COUNT(DISTINCT word_id) n FROM reports WHERE status='open'").get().n;
   const todayRow = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day)
     || { reviews: 0, correct: 0, new_words: 0, goal_met: 0 };
+  const completedWordsToday = db.prepare('SELECT COUNT(*) n FROM daily_words WHERE user_id=? AND day=?').get(uid, day).n;
 
   const levels = getLevelsBreakdown(uid);
   const autoLevel = resolveActiveLevel(levels);
@@ -488,6 +489,7 @@ function getStats(uid) {
       reviews: todayRow.reviews,
       correct: todayRow.correct,
       newWords: todayRow.new_words,
+      completedWords: completedWordsToday,
       goalMet,
     },
     dailyPlan: {
@@ -499,6 +501,7 @@ function getStats(uid) {
       newToday: todayRow.new_words,
       reviewsToday: todayRow.reviews,
       correctToday: todayRow.correct,
+      completedWordsToday,
       goalMet,
       newProgressPct: Math.min(100, Math.round((todayRow.new_words / Math.max(1, u.daily_new_goal)) * 100)),
       reviewProgressPct: Math.min(100, Math.round((todayRow.reviews / Math.max(1, u.daily_review_goal)) * 100)),
@@ -514,6 +517,33 @@ function getStats(uid) {
 
 app.get('/api/stats', auth, (req, res) => res.json(getStats(req.user.id)));
 
+app.get('/api/daily-words', auth, (req, res) => {
+  const uid = req.user.id;
+  const rawDay = String(req.query.day || '').trim();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? rawDay : todayIso();
+  const rows = db.prepare(`
+    SELECT w.*, COALESCE(p.box, 0) AS box, 0 AS isNew,
+           dw.is_new AS learnedToday, dw.last_rating AS lastRating,
+           dw.reviews AS todayReviews, dw.updated_at AS reviewedAt
+    FROM daily_words dw
+    JOIN words w ON w.id = dw.word_id
+    LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = dw.user_id
+    WHERE dw.user_id = ? AND dw.day = ?
+    ORDER BY dw.updated_at DESC
+  `).all(uid, day);
+
+  res.json({
+    day,
+    words: rows.map(r => ({
+      ...formatCard(r),
+      learnedToday: !!r.learnedToday,
+      lastRating: r.lastRating,
+      todayReviews: r.todayReviews,
+      reviewedAt: r.reviewedAt,
+    })),
+  });
+});
+
 // rating: 0 = again, 1 = good, 2 = easy
 app.post('/api/review', auth, (req, res) => {
   const { wordId, rating } = req.body || {};
@@ -523,6 +553,7 @@ app.post('/api/review', auth, (req, res) => {
   const uid = req.user.id, now = Date.now(), day = todayIso();
   const prevProgress = db.prepare('SELECT box, due, correct, wrong FROM progress WHERE user_id=? AND word_id=?').get(uid, wordId) || null;
   const prevDaily = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day) || null;
+  const prevDailyWord = db.prepare('SELECT is_new, last_rating, reviews, updated_at FROM daily_words WHERE user_id=? AND day=? AND word_id=?').get(uid, day, wordId) || null;
   const prevUser = {
     score: req.user.score,
     streak: req.user.streak,
@@ -584,18 +615,27 @@ app.post('/api/review', auth, (req, res) => {
       uid, day, ok, isFirstReview ? 1 : 0, isGoalMetNow ? 1 : 0,
       ok, isFirstReview ? 1 : 0, isGoalMetNow ? 1 : 0
     );
+
+    db.prepare(`
+      INSERT INTO daily_words(user_id, day, word_id, is_new, last_rating, reviews, updated_at)
+      VALUES(?, ?, ?, ?, ?, 1, ?)
+      ON CONFLICT(user_id, day, word_id) DO UPDATE SET
+        last_rating = excluded.last_rating,
+        reviews = reviews + 1,
+        updated_at = excluded.updated_at
+    `).run(uid, day, wordId, isFirstReview ? 1 : 0, rating, now);
   })();
 
   res.json({
     gained,
     dailyGoalJustMet,
-    undoToken: { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevUser },
+    undoToken: { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevDailyWord, prevUser },
     stats: getStats(uid),
   });
 });
 
 app.post('/api/review/undo', auth, (req, res) => {
-  const { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevUser } = req.body || {};
+  const { wordId, day, ok, isFirstReview, prevProgress, prevDaily, prevDailyWord, prevUser } = req.body || {};
   if (!Number.isInteger(wordId) || !prevUser) return res.status(400).json({ error: 'Invalid undo payload' });
   const uid = req.user.id;
   db.transaction(() => {
@@ -628,6 +668,12 @@ app.post('/api/review/undo', auth, (req, res) => {
       } else {
         db.prepare('UPDATE daily SET reviews=MAX(0,reviews-1), correct=MAX(0,correct-?), new_words=MAX(0,new_words-?) WHERE user_id=? AND day=?')
           .run(ok ? 1 : 0, isFirstReview ? 1 : 0, uid, day);
+      }
+      if (prevDailyWord) {
+        db.prepare('UPDATE daily_words SET is_new=?, last_rating=?, reviews=?, updated_at=? WHERE user_id=? AND day=? AND word_id=?')
+          .run(prevDailyWord.is_new, prevDailyWord.last_rating, prevDailyWord.reviews, prevDailyWord.updated_at, uid, day, wordId);
+      } else {
+        db.prepare('DELETE FROM daily_words WHERE user_id=? AND day=? AND word_id=?').run(uid, day, wordId);
       }
     }
   })();
