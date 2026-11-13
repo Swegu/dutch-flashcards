@@ -9,7 +9,8 @@
 <body>
   <header>
     <h1>Woordjes</h1>
-    <div>
+    <div class="header-actions">
+      <button id="reports-btn" class="ghost" hidden>🚩 <span id="reports-count">0</span></button>
       <select id="lang" aria-label="Language">
         <option value="en">English</option>
         <option value="bg">Български</option>
@@ -18,6 +19,7 @@
     </div>
   </header>
   <main id="app"></main>
+  <div id="toast" class="toast" hidden></div>
   <script src="app.js"></script>
 </body>
 </html>
