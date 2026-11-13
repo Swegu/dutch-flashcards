@@ -22,10 +22,6 @@ Run this in an empty folder. It saves `docker-compose.yaml` into that folder and
 curl -fsSL -o docker-compose.yaml https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml && docker compose up -d
 ```
 
-The image is built by GitHub Actions on every push to `main` and published to `ghcr.io/swegu/dutch-flashcards`
-(after the first build, set the package visibility to **Public** under the repo's Packages so it can be pulled without login).
-`docker-compose.example.yaml` is also the template to copy for your own setup.
-
 ## Configuration (optional)
 
 Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist),
