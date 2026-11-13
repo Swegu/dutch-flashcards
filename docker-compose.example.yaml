@@ -10,7 +10,6 @@ services:
     environment:
       ALLOW_REGISTRATION: "true"   # set to "false" once your accounts exist
       WORD_LIMIT: "0"              # max words to import, 0 = no limit
-      # MYMEMORY_EMAIL: you@example.com   # optional: higher free quota for Bulgarian translations
     volumes:
       - data:/data
     restart: unless-stopped

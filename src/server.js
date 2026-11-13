@@ -356,29 +356,6 @@ app.get('/api/search', auth, (req, res) => {
   res.json(rows.map(formatCard));
 });
 
-// Translations into other languages (Bulgarian) are fetched online on demand and cached.
-app.get('/api/translation/:id', auth, async (req, res) => {
-  const lang = req.query.lang;
-  if (lang !== 'bg') return res.status(400).json({ error: 'Unsupported language' });
-  const w = db.prepare('SELECT id, word FROM words WHERE id=?').get(+req.params.id);
-  if (!w) return res.status(404).json({ error: 'Unknown word' });
-  const hit = db.prepare('SELECT text FROM translations WHERE word_id=? AND lang=?').get(w.id, lang);
-  if (hit) return res.json({ text: hit.text });
-  try {
-    const u = new URL('https://api.mymemory.translated.net/get');
-    u.searchParams.set('q', w.word);
-    u.searchParams.set('langpair', `nl|${lang}`);
-    if (process.env.MYMEMORY_EMAIL) u.searchParams.set('de', process.env.MYMEMORY_EMAIL);
-    const j = await (await fetch(u, { signal: AbortSignal.timeout(6000) })).json();
-    const text = Number(j.responseStatus) === 200 && j.responseData?.translatedText?.trim();
-    if (text && !/MYMEMORY WARNING/i.test(text)) {
-      db.prepare('INSERT OR REPLACE INTO translations VALUES(?,?,?)').run(w.id, lang, text);
-      return res.json({ text });
-    }
-  } catch { /* fall through */ }
-  res.json({ text: '' });
-});
-
 // ---------- daily plan & level settings ----------
 app.post('/api/settings', auth, (req, res) => {
   const uid = req.user.id;

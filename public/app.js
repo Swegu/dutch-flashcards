@@ -1,112 +1,58 @@
-const I18N = {
-  en: {
-    login: 'Log in', register: 'Create account', username: 'Username', password: 'Password (min. 8 characters)',
-    logout: 'Log out', show: 'Show answer', again: 'Again', good: 'Good', easy: 'Easy', score: 'Score', streak: 'Streak',
-    dayStreak: 'Day streak', answerStreak: 'Answer streak',
-    best: 'Best streak', learned: 'Words started', mastered: 'Mastered', accuracy: 'Accuracy', today: 'Today', due: 'Due now',
-    last7: 'Last 7 days', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: '🌱 New', loading: 'Loading…',
-    importing: 'Preparing the Dutch dictionary… first start only, this can take a few minutes.', retry: 'Retry',
-    source: 'Source', rank: 'frequency rank', unranked: 'Unranked (Wiktionary)', mt: 'machine translation',
-    haveAccount: 'Already have an account? Log in', noAccount: 'No account yet? Create one', err: 'Something went wrong',
-    formOf: 'Form of', forms: 'Inflected forms', shuffleOn: '🎲 Shuffle: On', shuffleOff: '📋 Order: Frequency',
-    report: 'Report wrong', reportTitle: 'Report incorrect card', reportHint: 'Why is this card wrong? (optional)',
-    reportPlaceholder: 'e.g. wrong translation, typo, broken inflection…', sendReport: 'Report & Skip', cancel: 'Cancel',
-    reportedToast: 'Card reported and hidden from your queue.', reviewReports: 'Flagged cards',
-    noReports: 'No flagged cards waiting for review.', skipEveryone: 'Skip for everyone', keepWord: 'Dismiss flag',
-    skippedGlobalToast: 'Skipped for all users.', dismissedToast: 'Flag dismissed.',
-    conflictWarn: 'Sources disagree on meaning — verify on Wiktionary:',
-    wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
-    searchPlaceholder: 'Search Dutch or English word… ( / )', undo: 'Undo', undoneToast: 'Last rating undone.',
-    dailyPattern: 'Daily Learn Pattern',
-    modeDaily: '📅 Daily Plan', modeFree: '♾️ Free Practice',
-    stepNew: '🌱 New words', stepReviews: '🔄 Reviews', stepGoal: '🎯 Today',
-    goalReady: 'In progress', goalCompleteBadge: '✓ Daily goal met',
-    planSettings: '⚙️ Plan',
-    paceLight: '🐢 Casual (5 / 15)', paceRegular: '🚶 Regular (10 / 30)', paceIntensive: '🚀 Intensive (20 / 60)',
-    newPerDay: 'New words / day', reviewsPerDay: 'Total reviews / day', targetLevelLabel: 'Difficulty level',
-    savePlan: 'Save daily plan', planSavedToast: 'Daily learning plan updated.',
-    dailyGoalToast: '🎉 Daily learn pattern complete! (+50 bonus)',
-    dailyDoneTitle: '🎉 Daily Learn Pattern Complete!',
-    dailyDoneDesc: 'You finished today’s structured session of new level-matched words and spaced-repetition reviews.',
-    continueExtra: '➕ Continue Extra Practice', adjustPlan: '⚙️ Adjust Daily Goal',
-    stageDue: '🔄 Due review', stageConsolidate: '🧠 Consolidate', boxLabel: 'Box',
-    levelsTitle: 'Language Levels (CEFR)',
-    levels: {
-      auto: '🎓 Auto Level',
-      all: 'All levels',
-      A1: 'A1 · Beginner',
-      A2: 'A2 · Elementary',
-      B1: 'B1 · Intermediate',
-      B2: 'B2 · Upper-Int.',
-      C1: 'C1 · Advanced',
-      C2: 'C2 · Mastery',
-    },
-    topics: {
-      all: 'All topics',
-      food: '🍽️ Food & Drink',
-      travel: '🚆 Travel & Transport',
-      home: '🏠 Home & Daily',
-      work: '💼 Work & Money',
-      health: '🩺 Body & Health',
-    },
+const T = {
+  login: 'Log in', register: 'Create account', username: 'Username', password: 'Password (min. 8 characters)',
+  logout: 'Log out', show: 'Show answer', again: 'Again', good: 'Good', easy: 'Easy', score: 'Score', streak: 'Streak',
+  dayStreak: 'Day streak', answerStreak: 'Answer streak',
+  best: 'Best streak', learned: 'Words started', mastered: 'Mastered', accuracy: 'Accuracy', today: 'Today', due: 'Due now',
+  last7: 'Last 7 days', noCards: 'No cards available in this pack.', stats: 'Progress', newWord: '🌱 New', loading: 'Loading…',
+  importing: 'Preparing the Dutch dictionary… first start only, this can take a few minutes.', retry: 'Retry',
+  source: 'Source', rank: 'frequency rank', unranked: 'Unranked (Wiktionary)',
+  haveAccount: 'Already have an account? Log in', noAccount: 'No account yet? Create one', err: 'Something went wrong',
+  formOf: 'Form of', forms: 'Inflected forms', shuffleOn: '🎲 Shuffle: On', shuffleOff: '📋 Order: Frequency',
+  report: 'Report wrong', reportTitle: 'Report incorrect card', reportHint: 'Why is this card wrong? (optional)',
+  reportPlaceholder: 'e.g. wrong translation, typo, broken inflection…', sendReport: 'Report & Skip', cancel: 'Cancel',
+  reportedToast: 'Card reported and hidden from your queue.', reviewReports: 'Flagged cards',
+  noReports: 'No flagged cards waiting for review.', skipEveryone: 'Skip for everyone', keepWord: 'Dismiss flag',
+  skippedGlobalToast: 'Skipped for all users.', dismissedToast: 'Flag dismissed.',
+  conflictWarn: 'Sources disagree on meaning — verify on Wiktionary:',
+  wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
+  searchPlaceholder: 'Search Dutch or English word… ( / )', undo: 'Undo', undoneToast: 'Last rating undone.',
+  dailyPattern: 'Daily Learn Pattern',
+  modeDaily: '📅 Daily Plan', modeFree: '♾️ Free Practice',
+  stepNew: '🌱 New words', stepReviews: '🔄 Reviews', stepGoal: '🎯 Today',
+  goalReady: 'In progress', goalCompleteBadge: '✓ Daily goal met',
+  planSettings: '⚙️ Plan',
+  paceLight: '🐢 Casual (5 / 15)', paceRegular: '🚶 Regular (10 / 30)', paceIntensive: '🚀 Intensive (20 / 60)',
+  newPerDay: 'New words / day', reviewsPerDay: 'Total reviews / day', targetLevelLabel: 'Difficulty level',
+  savePlan: 'Save daily plan', planSavedToast: 'Daily learning plan updated.',
+  dailyGoalToast: '🎉 Daily learn pattern complete! (+50 bonus)',
+  dailyDoneTitle: '🎉 Daily Learn Pattern Complete!',
+  dailyDoneDesc: 'You finished today’s structured session of new level-matched words and spaced-repetition reviews.',
+  continueExtra: '➕ Continue Extra Practice', adjustPlan: '⚙️ Adjust Daily Goal',
+  stageDue: '🔄 Due review', stageConsolidate: '🧠 Consolidate', boxLabel: 'Box',
+  levelsTitle: 'Language Levels (CEFR)',
+  levels: {
+    auto: '🎓 Auto Level',
+    all: 'All levels',
+    A1: 'A1 · Beginner',
+    A2: 'A2 · Elementary',
+    B1: 'B1 · Intermediate',
+    B2: 'B2 · Upper-Int.',
+    C1: 'C1 · Advanced',
+    C2: 'C2 · Mastery',
   },
-  bg: {
-    login: 'Вход', register: 'Създай профил', username: 'Потребителско име', password: 'Парола (мин. 8 символа)',
-    logout: 'Изход', show: 'Покажи отговора', again: 'Отново', good: 'Добре', easy: 'Лесно', score: 'Точки', streak: 'Серия',
-    dayStreak: 'Дни подред', answerStreak: 'Верни подред',
-    best: 'Най-добра серия', learned: 'Започнати думи', mastered: 'Научени', accuracy: 'Точност', today: 'Днес', due: 'За преговор',
-    last7: 'Последните 7 дни', noCards: 'Няма налични карти в тази тема.', stats: 'Напредък', newWord: '🌱 Нова', loading: 'Зареждане…',
-    importing: 'Подготвя се холандският речник… само при първо стартиране, може да отнеме няколко минути.', retry: 'Опитай пак',
-    source: 'Източник', rank: 'ранг по честота', unranked: 'Без ранг (Wiktionary)', mt: 'машинен превод',
-    haveAccount: 'Вече имаш профил? Влез', noAccount: 'Нямаш профил? Създай', err: 'Нещо се обърка',
-    formOf: 'Форма на', forms: 'Словоформи', shuffleOn: '🎲 Разбъркано: Вкл.', shuffleOff: '📋 Ред: По честота',
-    report: 'Докладвай грешка', reportTitle: 'Докладвай грешна карта', reportHint: 'Какъв е проблемът? (по избор)',
-    reportPlaceholder: 'напр. грешен превод, печатна грешка…', sendReport: 'Докладвай и пропусни', cancel: 'Отказ',
-    reportedToast: 'Картата е докладвана и скрита от опашката ти.', reviewReports: 'Докладвани карти',
-    noReports: 'Няма докладвани карти за преглед.', skipEveryone: 'Скрий за всички', keepWord: 'Отхвърли сигнала',
-    skippedGlobalToast: 'Скрито за всички потребители.', dismissedToast: 'Сигналът е отхвърлен.',
-    conflictWarn: 'Разминаване между източниците — провери в Wiktionary:',
-    wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
-    searchPlaceholder: 'Търси дума на холандски или английски… ( / )', undo: 'Отмени', undoneToast: 'Последната оценка е отменена.',
-    dailyPattern: 'Дневен план за учене',
-    modeDaily: '📅 Дневен план', modeFree: '♾️ Свободна практика',
-    stepNew: '🌱 Нови думи', stepReviews: '🔄 Преговори', stepGoal: '🎯 Днес',
-    goalReady: 'В процес', goalCompleteBadge: '✓ Изпълнена цел',
-    planSettings: '⚙️ План',
-    paceLight: '🐢 Леко (5 / 15)', paceRegular: '🚶 Редовно (10 / 30)', paceIntensive: '🚀 Интензивно (20 / 60)',
-    newPerDay: 'Нови думи / ден', reviewsPerDay: 'Общо преговори / ден', targetLevelLabel: 'Езиково ниво',
-    savePlan: 'Запази плана', planSavedToast: 'Дневният план е обновен.',
-    dailyGoalToast: '🎉 Дневният план е изпълнен! (+50 бонус)',
-    dailyDoneTitle: '🎉 Дневният план за днес е изпълнен!',
-    dailyDoneDesc: 'Завърши дневната си сесия от нови думи за твоето ниво и планирани преговори.',
-    continueExtra: '➕ Допълнителна практика', adjustPlan: '⚙️ Промени дневната цел',
-    stageDue: '🔄 За преговор', stageConsolidate: '🧠 Затвърждаване', boxLabel: 'Кутия',
-    levelsTitle: 'Езикови нива (CEFR)',
-    levels: {
-      auto: '🎓 Авто ниво',
-      all: 'Всички нива',
-      A1: 'A1 · Начинаещ',
-      A2: 'A2 · Елементарно',
-      B1: 'B1 · Средно',
-      B2: 'B2 · Напреднало средно',
-      C1: 'C1 · Напреднал',
-      C2: 'C2 · Професионално',
-    },
-    topics: {
-      all: 'Всички теми',
-      food: '🍽️ Храна и напитки',
-      travel: '🚆 Пътуване и транспорт',
-      home: '🏠 Дом и ежедневие',
-      work: '💼 Работа и финанси',
-      health: '🩺 Тяло и здраве',
-    },
+  topics: {
+    all: 'All topics',
+    food: '🍽️ Food & Drink',
+    travel: '🚆 Travel & Transport',
+    home: '🏠 Home & Daily',
+    work: '💼 Work & Money',
+    health: '🩺 Body & Health',
   },
 };
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-let lang = localStorage.lang || 'en';
 let topic = localStorage.topic || 'all';
 let level = localStorage.level || 'auto';
 let studyMode = localStorage.studyMode === 'free' ? 'free' : 'daily';
@@ -118,7 +64,7 @@ let reporting = false, showingReports = false, reportsList = [];
 let searchQuery = '', searchResults = [], searchTimer = null;
 let lastUndo = null, lastReviewedCard = null, toastTimer = null;
 
-const t = k => I18N[lang][k];
+const t = k => T[k];
 const view = html => { $('#app').innerHTML = html; };
 
 function showToast(msg, withUndo = false) {
@@ -138,7 +84,7 @@ async function api(path, body) {
 }
 
 async function boot() {
-  applyLang();
+  $('#logout').textContent = t('logout');
   const s = await api('status');
   if (!s.ready && s.state === 'error') {
     return view(`<div class="panel"><p class="err">${esc(s.message)}</p><button data-act="retry">${t('retry')}</button></div>`);
@@ -149,12 +95,6 @@ async function boot() {
   }
   try { await api('me'); await start(); }
   catch (e) { e.status === 401 ? renderAuth() : view(`<p class="err">${esc(e.message)}</p>`); }
-}
-
-function applyLang() {
-  $('#lang').value = lang;
-  document.documentElement.lang = lang;
-  $('#logout').textContent = t('logout');
 }
 
 function updateHeaderBadges() {
@@ -224,19 +164,10 @@ async function jumpToWord(wordStr) {
   }
 }
 
-async function loadTr(c) {
-  c.tr ??= {};
-  if (c.tr[lang] !== undefined) return;
-  c.tr[lang] = null;
-  try { c.tr[lang] = (await api(`translation/${c.id}?lang=${lang}`)).text; } catch { c.tr[lang] = ''; }
-  if (c === card) render();
-}
-
 function flip() {
   if (!card || flipped || reporting) return;
   flipped = true;
   render();
-  if (lang !== 'en') loadTr(card);
 }
 
 async function rate(r) {
@@ -489,7 +420,6 @@ function cardHtml() {
 
   let back = '';
   if (flipped) {
-    const tr = lang === 'en' ? '' : (c.tr?.[lang] ?? null) === null ? '…' : c.tr[lang];
     const conflictHtml = c.meaningConflict && c.altGlosses?.length ? `
       <div class="warn-box">
         <strong>⚠️ ${t('conflictWarn')}</strong>
@@ -504,14 +434,12 @@ function cardHtml() {
       </div>` : '';
 
     back = `
-      ${tr ? `<div class="tr">${esc(tr)}</div>` : ''}
-      <div class="${tr ? 'sub' : 'tr'}">${c.glosses.map(esc).join('; ')}</div>
+      <div class="tr">${c.glosses.map(esc).join('; ')}</div>
       ${conflictHtml}
       ${formsHtml}
       ${c.exampleNl ? `<div class="ex"><i>${esc(c.exampleNl)}</i><br>${esc(c.exampleEn)}</div>` : ''}
       <div class="src">
         ${t('source')}: <a href="${esc(c.sourceUrl)}" target="_blank" rel="noopener">Wiktionary ↗</a>
-        ${tr && tr !== '…' ? `· <a href="https://mymemory.translated.net/en/Dutch/Bulgarian/${encodeURIComponent(c.word)}" target="_blank" rel="noopener">MyMemory ↗</a> (${t('mt')})` : ''}
         · ${rankLabel}
       </div>`;
   }
@@ -810,14 +738,6 @@ document.addEventListener('keydown', e => {
 $('#reports-btn').addEventListener('click', () => {
   if (showingReports) { showingReports = false; render(); }
   else openReportsView();
-});
-
-$('#lang').addEventListener('change', e => {
-  lang = localStorage.lang = e.target.value;
-  applyLang();
-  if (stats) { render(); if (flipped && lang !== 'en') loadTr(card); }
-  else if (!$('#auth')) boot();
-  else renderAuth();
 });
 
 $('#logout').addEventListener('click', async () => {

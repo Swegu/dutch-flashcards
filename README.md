@@ -24,7 +24,7 @@ curl -fsSL -o docker-compose.yaml https://raw.githubusercontent.com/Swegu/dutch-
 
 ## Configuration (optional)
 
-Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist), `WORD_LIMIT` (default `0` = no limit: all ranked and unranked Wiktionary Dutch lemmas), `MYMEMORY_EMAIL` (higher free quota for Bulgarian).
+Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist), `WORD_LIMIT` (default `0` = no limit: all ranked and unranked Wiktionary Dutch lemmas).
 Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and progress are kept.
 
 ## How it works
@@ -51,8 +51,6 @@ Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and pr
 - **Report Wrong & Global Skip**: Flag incorrect cards (`🚩`). Reported cards are hidden immediately from your queue and listed in the header review drawer (`🚩`), where they can be skipped globally for all users or dismissed.
 
 - **Score**: Good = 10, Easy = 15, plus a bonus of 2 per streak step (max +20) and +50 for completing the Daily Learn Pattern. Again resets the answer streak.
-
-- **Bulgarian**: Language switch in the header translates the UI and shows a Bulgarian translation on the card back (via MyMemory, cached in SQLite; English meaning stays visible).
 
 ## Layout
 
