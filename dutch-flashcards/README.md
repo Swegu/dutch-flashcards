@@ -1,0 +1,54 @@
+# Woordjes – Dutch flashcards
+
+Learn Dutch words with spaced repetition, accounts, score and progress tracking.
+Words, English meanings, IPA and example sentences are downloaded online on first start (nothing is hard-coded).
+
+## Run
+
+```bash
+docker compose up -d --build
+```
+
+Open <http://localhost:3000>. The first start downloads the dictionary and builds the word list
+(a few minutes, the page shows progress). Create an account and start learning.
+
+Update after changing code: `docker compose up -d --build`. Stop: `docker compose down` (data is kept in the `data` volume).
+
+## Configuration (optional)
+
+Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist),
+`WORD_LIMIT` (default 5000 most common words), `MYMEMORY_EMAIL` (higher free quota for Bulgarian).
+To rebuild the word list (e.g. a different `WORD_LIMIT`): `docker compose down -v` (this also deletes accounts and progress).
+
+## How it works
+
+- **Words**: frequency ranking from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords),
+  meanings/IPA/examples from the Dutch Wiktionary extract on [kaikki.org](https://kaikki.org/). Stored in SQLite.
+- **Ranking by your feedback**: after each card you rate *Again / Good / Easy* (keys `1 2 3`, `Space` flips).
+  Cards move through 7 Leitner boxes (intervals 0, 1, 3, 7, 14, 30, 60 days). Due cards come first, words you
+  get wrong more often than right come before the rest, then new words by frequency.
+- **Score**: Good = 10, Easy = 15, plus a bonus of 2 per streak step (max +20). *Again* resets the streak.
+- **Progress**: words started, mastered (box 5+), accuracy, today, last 7 days, due now.
+- **Bulgarian**: language switch in the header changes the interface and shows a Bulgarian translation on the
+  card back (machine translation via MyMemory, fetched on demand and cached; English meaning stays visible).
+
+## Layout
+
+```
+src/server.js   API, auth, spaced repetition, stats
+src/import.js   first-start word import
+src/db.js       SQLite schema
+public/         frontend (index.html, app.js, style.css)
+Dockerfile, docker-compose.yml
+```
+
+## Behind a reverse proxy
+
+Proxy to port 3000 and forward `X-Forwarded-Proto` so the login cookie is marked `Secure` on HTTPS.
+
+## GitHub
+
+```bash
+git init && git add . && git commit -m "Initial version"
+git branch -M main && git remote add origin <your-repo-url> && git push -u origin main
+```
