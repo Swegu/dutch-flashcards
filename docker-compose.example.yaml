@@ -1,0 +1,17 @@
+# Runs the prebuilt multi-arch image (x86-64 and ARM64) - no clone or build needed:
+#   curl -fsSL https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml | docker compose -p woordjes -f - up -d
+services:
+  web:
+    image: ghcr.io/swegu/dutch-flashcards:latest
+    ports:
+      - "3000:3000"
+    environment:
+      ALLOW_REGISTRATION: "true"   # set to "false" once your accounts exist
+      WORD_LIMIT: "5000"           # number of most common Dutch words to import
+      # MYMEMORY_EMAIL: you@example.com   # optional: higher free quota for Bulgarian translations
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:

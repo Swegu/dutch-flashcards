@@ -14,6 +14,16 @@ Open <http://localhost:3000>. The first start downloads the dictionary and build
 
 Update after changing code: `docker compose up -d --build`. Stop: `docker compose down` (data is kept in the `data` volume).
 
+### Without cloning (prebuilt x86-64 + ARM64 image)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Swegu/dutch-flashcards/main/docker-compose.example.yaml | docker compose -p woordjes -f - up -d
+```
+
+The image is built by GitHub Actions on every push to `main` and published to `ghcr.io/swegu/dutch-flashcards`
+(after the first build, set the package visibility to **Public** under the repo's Packages so it can be pulled without login).
+`docker-compose.example.yaml` is also the template to copy for your own setup.
+
 ## Configuration (optional)
 
 Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist),
