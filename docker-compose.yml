@@ -5,7 +5,7 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
-      WORD_LIMIT: ${WORD_LIMIT:-5000}
+      WORD_LIMIT: ${WORD_LIMIT:-0}
       MYMEMORY_EMAIL: ${MYMEMORY_EMAIL:-}
     volumes:
       - data:/data

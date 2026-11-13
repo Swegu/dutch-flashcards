@@ -4,12 +4,14 @@ const I18N = {
     best:'Best streak', learned:'Words started', mastered:'Mastered', accuracy:'Accuracy', today:'Today', due:'Due now',
     last7:'Last 7 days', noCards:'No cards available.', stats:'Progress', newWord:'New', loading:'Loading…',
     importing:'Preparing the Dutch dictionary… first start only, this can take a few minutes.', retry:'Retry',
+    source:'Source', rank:'frequency rank', mt:'machine translation', updating:'Word list is being updated…',
     haveAccount:'Already have an account? Log in', noAccount:'No account yet? Create one', err:'Something went wrong' },
   bg: { login:'Вход', register:'Създай профил', username:'Потребителско име', password:'Парола (мин. 8 символа)',
     logout:'Изход', show:'Покажи отговора', again:'Отново', good:'Добре', easy:'Лесно', score:'Точки', streak:'Серия',
     best:'Най-добра серия', learned:'Започнати думи', mastered:'Научени', accuracy:'Точност', today:'Днес', due:'За преговор',
     last7:'Последните 7 дни', noCards:'Няма налични карти.', stats:'Напредък', newWord:'Нова', loading:'Зареждане…',
     importing:'Подготвя се холандският речник… само при първо стартиране, може да отнеме няколко минути.', retry:'Опитай пак',
+    source:'Източник', rank:'ранг по честота', mt:'машинен превод', updating:'Списъкът с думи се обновява…',
     haveAccount:'Вече имаш профил? Влез', noAccount:'Нямаш профил? Създай', err:'Нещо се обърка' },
 };
 
@@ -30,10 +32,10 @@ async function api(path, body) {
 async function boot() {
   applyLang();
   const s = await api('status');
-  if (s.state === 'error') {
+  if (!s.ready && s.state === 'error') {
     return view(`<div class="panel"><p class="err">${esc(s.message)}</p><button data-act="retry">${t('retry')}</button></div>`);
   }
-  if (s.state !== 'done') {
+  if (!s.ready) {
     view(`<div class="panel"><p>${t('importing')}</p><p class="muted">${esc(s.message)}</p></div>`);
     return setTimeout(boot, 3000);
   }
@@ -101,7 +103,10 @@ function cardHtml() {
     const tr = lang === 'en' ? '' : (c.tr?.[lang] ?? null) === null ? '…' : c.tr[lang];
     back = `${tr ? `<div class="tr">${esc(tr)}</div>` : ''}
       <div class="${tr ? 'sub' : 'tr'}">${c.glosses.map(esc).join('; ')}</div>
-      ${c.exampleNl ? `<div class="ex"><i>${esc(c.exampleNl)}</i><br>${esc(c.exampleEn)}</div>` : ''}`;
+      ${c.exampleNl ? `<div class="ex"><i>${esc(c.exampleNl)}</i><br>${esc(c.exampleEn)}</div>` : ''}
+      <div class="src">${t('source')}: <a href="${esc(c.sourceUrl)}" target="_blank" rel="noopener">Wiktionary ↗</a>
+        ${tr && tr !== '…' ? `· <a href="https://mymemory.translated.net/en/Dutch/Bulgarian/${encodeURIComponent(c.word)}" target="_blank" rel="noopener">MyMemory ↗</a> (${t('mt')})` : ''}
+        · ${t('rank')} #${c.rank}</div>`;
   }
   return `<div class="card" data-act="flip">
       ${c.isNew ? `<span class="tag">${t('newWord')}</span>` : ''}${gain ? `<span class="gain">+${gain}</span>` : ''}

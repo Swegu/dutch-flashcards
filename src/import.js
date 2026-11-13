@@ -7,7 +7,8 @@ const db = require('./db');
 
 const FREQ_URL = process.env.FREQ_URL || 'https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/nl/nl_50k.txt';
 const DICT_URL = process.env.DICT_URL || 'https://kaikki.org/dictionary/Dutch/kaikki.org-dictionary-Dutch.jsonl';
-const WORD_LIMIT = +process.env.WORD_LIMIT || 5000;
+const WORD_LIMIT = +process.env.WORD_LIMIT || 0; // 0 = no limit
+const IMPORT_VERSION = `2|${WORD_LIMIT}`; // change to re-import (progress is kept)
 const SKIP_POS = new Set(['name', 'character', 'symbol', 'prefix', 'suffix', 'infix', 'abbreviation', 'initialism']);
 const SKIP_TAGS = new Set(['obsolete', 'archaic', 'dialectal', 'rare', 'dated']);
 
@@ -26,9 +27,8 @@ async function run() {
   setMeta('import_message', 'Downloading frequency list…');
   const rank = new Map();
   for (const line of (await (await fetchOk(FREQ_URL)).text()).split('\n')) {
-    const w = line.split(' ')[0];
-    if (w.length > 1 && /^[a-zà-ÿ]+(?:[-'][a-zà-ÿ]+)*$/.test(w) && !rank.has(w)) rank.set(w, rank.size + 1);
-    if (rank.size >= WORD_LIMIT * 3) break;
+    const [w, count] = line.split(' ');
+    if (w.length > 1 && /^[a-zà-ÿ]+(?:[-'][a-zà-ÿ]+)*$/.test(w) && !rank.has(w)) rank.set(w, { r: rank.size + 1, freq: +count || null });
   }
 
   setMeta('import_message', 'Downloading dictionary…');
@@ -56,24 +56,33 @@ async function run() {
     f.ipa ||= e.sounds?.find(s => s.ipa)?.ipa;
   }
 
-  const rows = [...found].map(([word, f]) => ({ word, f, r: rank.get(word), g: f.main.length ? f.main : f.forms }))
-    .filter(x => x.g.length).sort((a, b) => a.r - b.r).slice(0, WORD_LIMIT);
+  const rows = [...found].map(([word, f]) => ({ word, f, r: rank.get(word).r, freq: rank.get(word).freq, g: f.main.length ? f.main : f.forms }))
+    .filter(x => x.g.length).sort((a, b) => a.r - b.r).slice(0, WORD_LIMIT || undefined);
   if (rows.length < 50) throw new Error(`Only ${rows.length} words found - import aborted`);
-  const ins = db.prepare('INSERT INTO words(rank,word,pos,glosses,ipa,example_nl,example_en) VALUES(?,?,?,?,?,?,?)');
-  db.transaction(() => rows.forEach((x, i) => ins.run(i + 1, x.word, x.f.pos || x.f.anyPos, JSON.stringify(x.g),
-    x.f.ipa || null, x.f.ex?.text || null, x.f.ex?.english || null)))();
+  // Upsert by word so ids (and everyone's progress) stay valid when the list is refreshed.
+  const ins = db.prepare(`INSERT INTO words(rank,word,pos,glosses,ipa,example_nl,example_en,freq) VALUES(?,?,?,?,?,?,?,?)
+    ON CONFLICT(word) DO UPDATE SET rank=excluded.rank, pos=excluded.pos, glosses=excluded.glosses, ipa=excluded.ipa,
+    example_nl=excluded.example_nl, example_en=excluded.example_en, freq=excluded.freq`);
+  db.transaction(() => {
+    db.prepare('UPDATE words SET rank = rank + 1000000').run(); // words no longer in the list sink to the end
+    rows.forEach((x, i) => ins.run(i + 1, x.word, x.f.pos || x.f.anyPos, JSON.stringify(x.g),
+      x.f.ipa || null, x.f.ex?.text || null, x.f.ex?.english || null, x.freq));
+  })();
+  setMeta('import_version', IMPORT_VERSION);
   setMeta('import_state', 'done');
   setMeta('import_message', '');
 }
 
 function startImport() {
-  if (db.prepare('SELECT 1 FROM words LIMIT 1').get()) return setMeta('import_state', 'done');
+  if (db.prepare('SELECT 1 FROM words LIMIT 1').get() && getMeta('import_version') === IMPORT_VERSION) return setMeta('import_state', 'done');
   if (running) return;
   running = true;
   run().catch(e => { console.error('Import failed:', e); setMeta('import_state', 'error'); setMeta('import_message', e.message); })
     .finally(() => { running = false; });
 }
 
-const importStatus = () => ({ state: getMeta('import_state') || 'idle', message: getMeta('import_message') || '' });
+// ready = words exist, so the app is usable even while a refresh runs in the background
+const importStatus = () => ({ state: getMeta('import_state') || 'idle', message: getMeta('import_message') || '',
+  ready: !!db.prepare('SELECT 1 FROM words LIMIT 1').get() });
 
 module.exports = { startImport, importStatus };

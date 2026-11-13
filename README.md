@@ -29,13 +29,13 @@ The image is built by GitHub Actions on every push to `main` and published to `g
 ## Configuration (optional)
 
 Copy `.env.example` to `.env`. Options: `PORT`, `ALLOW_REGISTRATION` (set `false` once your accounts exist),
-`WORD_LIMIT` (default 5000 most common words), `MYMEMORY_EMAIL` (higher free quota for Bulgarian).
-To rebuild the word list (e.g. a different `WORD_LIMIT`): `docker compose down -v` (this also deletes accounts and progress).
+`WORD_LIMIT` (default `0` = no limit: every word of the 50k frequency list that has a Wiktionary entry), `MYMEMORY_EMAIL` (higher free quota for Bulgarian).
+Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and progress are kept.
 
 ## How it works
 
 - **Words**: frequency ranking from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords),
-  meanings/IPA/examples from the Dutch Wiktionary extract on [kaikki.org](https://kaikki.org/). Stored in SQLite.
+  meanings/IPA/examples from the Dutch Wiktionary extract on [kaikki.org](https://kaikki.org/). Stored in SQLite. Every card links to its Wiktionary entry so the meaning can be checked.
 - **Ranking by your feedback**: after each card you rate *Again / Good / Easy* (keys `1 2 3`, `Space` flips).
   Cards move through 7 Leitner boxes (intervals 0, 1, 3, 7, 14, 30, 60 days). Due cards come first, words you
   get wrong more often than right come before the rest, then new words by frequency.

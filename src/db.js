@@ -32,4 +32,7 @@ CREATE TABLE IF NOT EXISTS daily(
   reviews INTEGER NOT NULL DEFAULT 0, correct INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(user_id, day));
 `);
 
+// Migration: frequency count column (databases created by earlier versions lack it)
+if (!db.prepare("SELECT 1 FROM pragma_table_info('words') WHERE name='freq'").get()) db.exec('ALTER TABLE words ADD COLUMN freq INTEGER');
+
 module.exports = db;

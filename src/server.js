@@ -83,6 +83,7 @@ app.get('/api/cards', auth, (req, res) => {
   res.json([...due, ...fresh].map(w => ({
     id: w.id, word: w.word, pos: w.pos, ipa: w.ipa, glosses: JSON.parse(w.glosses),
     exampleNl: w.example_nl, exampleEn: w.example_en, box: w.box, isNew: !!w.isNew,
+    rank: w.rank, freq: w.freq, sourceUrl: `https://en.wiktionary.org/wiki/${encodeURIComponent(w.word)}#Dutch`,
   })));
 });
 
