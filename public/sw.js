@@ -1,4 +1,4 @@
-const CACHE = 'woordjes-shell-v3';
+const CACHE = 'woordjes-shell-v4';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/icon.svg', '/manifest.json'];
 
 self.addEventListener('install', e => {

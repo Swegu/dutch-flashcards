@@ -76,6 +76,11 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let theme = localStorage.theme || 'auto'; // 'auto' | 'light' | 'dark'
+let reducedMotion = localStorage.reducedMotion === '1';
+let showDehetQuiz = localStorage.showDehetQuiz !== '0';
+let showDetails = localStorage.showDetails !== '0';
+let showHints = localStorage.showHints !== '0';
+let currentUser = '';
 let tab = localStorage.tab || 'study';
 let topic = localStorage.topic || 'all';
 let thema = localStorage.thema || 'all';
@@ -86,7 +91,7 @@ let studyMode = localStorage.studyMode === 'free' ? 'free' : 'daily';
 let extraPractice = false;
 let shuffle = localStorage.shuffle !== '0';
 
-let activeModal = null; // null | 'plan' | 'filters' | 'search'
+let activeModal = null; // null | 'filters' | 'search'
 let stats, queue = [], card = null, flipped = false, gain = 0, mode = 'login', authErr = '';
 let reporting = false, showingReports = false, reportsList = [];
 let dailyWordsDay = '', dailyWordsList = [], dailyWordsFilter = 'all', dailyWordsLoaded = false;
@@ -111,14 +116,10 @@ function applyTheme() {
   } else {
     delete document.documentElement.dataset.theme;
   }
+  document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'full';
   const icons = { auto: '🌓', light: '☀️', dark: '🌙' };
-  const labels = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
-  const sideIco = $('#side-theme-ico');
-  const sideLbl = $('#side-theme-label');
   const topBtn = $('#top-theme-btn');
-  if (sideIco) sideIco.textContent = icons[theme];
-  if (sideLbl) sideLbl.textContent = labels[theme];
-  if (topBtn) topBtn.textContent = icons[theme];
+  if (topBtn) topBtn.textContent = icons[theme] || '🌓';
 }
 
 function resetCardInteraction() {
@@ -160,8 +161,11 @@ async function boot() {
     view(`<div class="panel"><p>${t('importing')}</p><p class="muted">${esc(s.message)}</p></div>`);
     return setTimeout(boot, 3000);
   }
-  try { await api('me'); await start(); }
-  catch (e) { e.status === 401 ? renderAuth() : view(`<p class="err">${esc(e.message)}</p>`); }
+  try {
+    const me = await api('me');
+    currentUser = me.username || '';
+    await start();
+  } catch (e) { e.status === 401 ? renderAuth() : view(`<p class="err">${esc(e.message)}</p>`); }
 }
 
 function updateChrome() {
@@ -639,7 +643,7 @@ function dailyRailHtml() {
       </div>
       <div class="rail-actions">
         <button type="button" data-act="inspect-today-words">${t('inspectWordsBtn')} (${completedCount})</button>
-        <button type="button" data-act="open-plan">${t('planSettings')}</button>
+        <button type="button" data-act="switch-tab" data-tab="settings">${t('planSettings')}</button>
       </div>
     </section>
 
@@ -713,7 +717,7 @@ function dailyDoneHtml() {
     <div class="row-actions center-actions">
       <button type="button" class="primary" data-act="extra-practice">${t('continueExtra')}</button>
       <button type="button" data-act="inspect-today-words">${t('inspectCompletedBtn')} (${completedCount})</button>
-      <button type="button" data-act="open-plan">${t('adjustPlan')}</button>
+      <button type="button" data-act="switch-tab" data-tab="settings">${t('adjustPlan')}</button>
     </div>
   </section>`;
 }
@@ -745,7 +749,7 @@ function cardBackDetailsHtml(c) {
       <div><b>${t('freedictLabel')}:</b> ${c.altGlosses.map(esc).join('; ')}</div>
     </div>` : '';
 
-  const formsHtml = c.forms?.length ? `
+  const formsHtml = showDetails && c.forms?.length ? `
     <div class="forms-box">
       <span class="muted">${t('forms')}:</span>
       ${c.forms.map(f => `<span class="pill form-pill" title="${esc(f.gloss)}">${esc(f.word)}</span>`).join('')}
@@ -763,7 +767,7 @@ function cardBackDetailsHtml(c) {
 
 function ratingButtonsHtml(suggestedRating = null) {
   return `<div class="rate">${[['again', 0], ['good', 1], ['easy', 2]]
-    .map(([k, r]) => `<button type="button" class="${suggestedRating === r ? 'suggested-rate' : ''}" data-act="rate" data-r="${r}">${t(k)} <small>${r + 1}</small></button>`).join('')}</div>`;
+    .map(([k, r]) => `<button type="button" class="${suggestedRating === r ? 'suggested-rate' : ''}" data-act="rate" data-r="${r}">${t(k)}${showHints ? ` <small>${r + 1}</small>` : ''}</button>`).join('')}</div>`;
 }
 
 function cardHtml() {
@@ -832,7 +836,7 @@ function cardHtml() {
       typeContent = `<div class="card-center reveal-anim">
         ${bannerHtml}
         <div class="word">${c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}</div>
-        <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
+        ${showDetails ? `<div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>` : (c.pos ? `<div class="meta">${esc(c.pos)}</div>` : '')}
         <div class="tr">${c.glosses.map(esc).join('; ')}</div>
         ${cardBackDetailsHtml(c)}
         ${typeResult && typeResult.status !== 'perfect' ? `<div><button type="button" class="small-btn" data-act="retry-type">${t('retryTypeBtn')}</button></div>` : ''}
@@ -857,15 +861,15 @@ function cardHtml() {
   // Flashcard mode
   let frontQuiz = '';
   if (!flipped && !reporting) {
-    frontQuiz = c.article ? `
+    frontQuiz = c.article && showDehetQuiz ? `
       <div class="dehet-quiz" data-stop="1">
         <div class="muted small">${t('chooseArticlePrompt')}</div>
         <div class="dehet-quiz-btns">
-          <button type="button" class="art-btn art-de" data-act="guess-art" data-art="de">de <small>D</small></button>
-          <button type="button" class="art-btn art-het" data-act="guess-art" data-art="het">het <small>H</small></button>
+          <button type="button" class="art-btn art-de" data-act="guess-art" data-art="de">de${showHints ? ' <small>D</small>' : ''}</button>
+          <button type="button" class="art-btn art-het" data-act="guess-art" data-art="het">het${showHints ? ' <small>H</small>' : ''}</button>
         </div>
-        <button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button>
-      </div>` : `<div><button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button><div class="desktop-flip-hint">Click anywhere on card to flip</div></div>`;
+        <button type="button" class="primary show-btn" data-act="flip">${t('show')}${showHints ? ' <small>Space</small>' : ''}</button>
+      </div>` : `<div><button type="button" class="primary show-btn" data-act="flip">${t('show')}${showHints ? ' <small>Space</small>' : ''}</button>${showHints ? '<div class="desktop-flip-hint">Click anywhere on card to flip</div>' : ''}</div>`;
   }
 
   let guessFeedback = '';
@@ -896,7 +900,7 @@ function cardHtml() {
       <div class="card-center">
         ${c.lemma ? `<div class="lemma-link">${t('formOf')} <a data-act="jump" data-word="${esc(c.lemma)}">${esc(c.lemma)}</a></div>` : ''}
         <div class="word">${flipped && c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}</div>
-        <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
+        <div class="meta">${esc(c.pos || '')} ${showDetails ? esc(c.ipa || '') : ''}</div>
         ${reporting ? reportModal : (flipped ? back : frontQuiz)}
       </div>
     </div>
@@ -1106,25 +1110,11 @@ function progressTabHtml() {
   `;
 }
 
-function renderModals() {
-  const root = $('#modal-root');
-  if (!root || !stats) {
-    if (root) root.innerHTML = '';
-    return;
-  }
-  if (!activeModal) {
-    root.innerHTML = '';
-    return;
-  }
-
-  let content = '';
-  if (activeModal === 'plan') {
-    const dp = stats.dailyPlan;
-    content = `
-      <div class="panel-head">
-        <h2>⚙️ ${t('dailyPattern')}</h2>
-        <button type="button" data-act="close-modal">✕</button>
-      </div>
+function settingsTabHtml() {
+  const dp = stats.dailyPlan;
+  return `<div class="settings-grid">
+    <section class="panel settings-card">
+      <h2>📅 ${t('dailyPattern')}</h2>
       <div class="pace-presets">
         <button type="button" class="${dp.dailyNewGoal === 5 && dp.dailyReviewGoal === 15 ? 'active' : ''}" data-act="preset-pace" data-new="5" data-rev="15">${t('paceLight')}</button>
         <button type="button" class="${dp.dailyNewGoal === 10 && dp.dailyReviewGoal === 30 ? 'active' : ''}" data-act="preset-pace" data-new="10" data-rev="30">${t('paceRegular')}</button>
@@ -1148,11 +1138,143 @@ function renderModals() {
           </select>
         </label>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Study session mode</strong>
+          <span>Daily Plan enforces your daily goals; Free Practice is unlimited</span>
+        </div>
+        <button type="button" class="setting-ctrl ${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
+          ${t(studyMode === 'daily' ? 'modeDaily' : 'modeFree')}
+        </button>
+      </div>
       <div class="row-actions">
         <button type="button" class="primary" data-act="save-plan">${t('savePlan')}</button>
-        <button type="button" data-act="close-modal">${t('cancel')}</button>
-      </div>`;
-  } else if (activeModal === 'filters') {
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <h2>🎨 Appearance &amp; Interface</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Color theme</strong>
+          <span>Choose Auto (system), Light, or Dark mode</span>
+        </div>
+        <div class="segmented setting-ctrl" role="group" aria-label="Color theme">
+          <button type="button" class="${theme === 'auto' ? 'active' : ''}" data-act="set-theme" data-theme="auto">🌓 Auto</button>
+          <button type="button" class="${theme === 'light' ? 'active' : ''}" data-act="set-theme" data-theme="light">☀️ Light</button>
+          <button type="button" class="${theme === 'dark' ? 'active' : ''}" data-act="set-theme" data-theme="dark">🌙 Dark</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Animations &amp; effects</strong>
+          <span>Card entrance, reveal motion, and hover spotlight</span>
+        </div>
+        <button type="button" class="setting-ctrl ${!reducedMotion ? 'active' : ''}" data-act="toggle-pref" data-pref="reducedMotion">
+          ${reducedMotion ? 'Reduced' : '✨ Smooth'}
+        </button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Keyboard shortcut hints</strong>
+          <span>Show key labels (Space, D, H, 1–3) on buttons</span>
+        </div>
+        <button type="button" class="setting-ctrl ${showHints ? 'active' : ''}" data-act="toggle-pref" data-pref="showHints">
+          ${showHints ? 'Shown' : 'Hidden'}
+        </button>
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <h2>🧠 Study &amp; Practice</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Default practice mode</strong>
+          <span>Flip flashcards or type Dutch translations</span>
+        </div>
+        <div class="segmented setting-ctrl" role="group" aria-label="Default practice mode">
+          <button type="button" class="${practiceMode === 'flashcard' ? 'active' : ''}" data-act="set-practice-mode" data-mode="flashcard">🃏 Cards</button>
+          <button type="button" class="${practiceMode === 'type' ? 'active' : ''}" data-act="set-practice-mode" data-mode="type">⌨️ Type</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>de / het flashcard quiz</strong>
+          <span>Show de &amp; het guess buttons on noun card fronts</span>
+        </div>
+        <button type="button" class="setting-ctrl ${showDehetQuiz ? 'active' : ''}" data-act="toggle-pref" data-pref="showDehetQuiz">
+          ${showDehetQuiz ? 'On' : 'Off'}
+        </button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Nouns only filter (de / het)</strong>
+          <span>Practice only words that have a de or het article</span>
+        </div>
+        <button type="button" class="setting-ctrl ${dehetOnly ? 'active-dehet' : ''}" data-act="toggle-dehet">
+          ${dehetOnly ? 'On' : 'Off'}
+        </button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>IPA &amp; inflected forms</strong>
+          <span>Display phonetic pronunciation and word forms</span>
+        </div>
+        <button type="button" class="setting-ctrl ${showDetails ? 'active' : ''}" data-act="toggle-pref" data-pref="showDetails">
+          ${showDetails ? 'Shown' : 'Hidden'}
+        </button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Card queue order</strong>
+          <span>Windowed shuffle or strict frequency rank order</span>
+        </div>
+        <button type="button" class="setting-ctrl ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">
+          ${t(shuffle ? 'shuffleOn' : 'shuffleOff')}
+        </button>
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <h2>👤 Account &amp; Data</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Signed in as</strong>
+          <span>${esc(currentUser || 'Learner')}</span>
+        </div>
+        <button type="button" class="setting-ctrl danger" data-act="logout">${t('logout')}</button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Flagged cards</strong>
+          <span>Review cards reported for translation or article issues</span>
+        </div>
+        <button type="button" class="setting-ctrl" data-act="toggle-reports">🚩 Review (${stats.openReports || 0})</button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>Reset local preferences</strong>
+          <span>Restore default theme, filters, and UI toggles</span>
+        </div>
+        <button type="button" class="setting-ctrl" data-act="reset-prefs">↺ Reset</button>
+      </div>
+    </section>
+  </div>`;
+}
+
+function renderModals() {
+  const root = $('#modal-root');
+  if (!root || !stats) {
+    if (root) root.innerHTML = '';
+    return;
+  }
+  if (!activeModal) {
+    root.innerHTML = '';
+    return;
+  }
+
+  let content = '';
+  if (activeModal === 'filters') {
     content = `
       <div class="panel-head">
         <h2>🎛️ ${t('filtersTitle')}</h2>
@@ -1194,6 +1316,8 @@ function render() {
     bodyHtml = curriculumTabHtml();
   } else if (tab === 'progress') {
     bodyHtml = progressTabHtml();
+  } else if (tab === 'settings') {
+    bodyHtml = settingsTabHtml();
   } else {
     const isDailyCompleteView = studyMode === 'daily' && !extraPractice && stats.dailyPlan?.goalMet && !card;
     const studyStage = isDailyCompleteView
@@ -1243,7 +1367,8 @@ document.addEventListener('submit', async e => {
   if (e.target.id === 'auth') {
     e.preventDefault();
     try {
-      await api(mode, Object.fromEntries(new FormData(e.target)));
+      const authRes = await api(mode, Object.fromEntries(new FormData(e.target)));
+      currentUser = authRes.username || '';
       authErr = '';
       await start();
     } catch (err) { authErr = err.message; renderAuth(); }
@@ -1344,9 +1469,37 @@ document.addEventListener('click', async e => {
     const order = ['auto', 'light', 'dark'];
     theme = localStorage.theme = order[(order.indexOf(theme) + 1) % order.length];
     applyTheme();
-  } else if (act === 'open-plan') {
-    activeModal = 'plan';
-    renderModals();
+    if (tab === 'settings') render();
+  } else if (act === 'set-theme') {
+    theme = localStorage.theme = el.dataset.theme || 'auto';
+    applyTheme();
+    render();
+  } else if (act === 'toggle-pref') {
+    const pref = el.dataset.pref;
+    if (pref === 'reducedMotion') {
+      reducedMotion = !reducedMotion;
+      localStorage.reducedMotion = reducedMotion ? '1' : '0';
+      applyTheme();
+    } else if (pref === 'showDehetQuiz') {
+      showDehetQuiz = !showDehetQuiz;
+      localStorage.showDehetQuiz = showDehetQuiz ? '1' : '0';
+    } else if (pref === 'showDetails') {
+      showDetails = !showDetails;
+      localStorage.showDetails = showDetails ? '1' : '0';
+    } else if (pref === 'showHints') {
+      showHints = !showHints;
+      localStorage.showHints = showHints ? '1' : '0';
+    }
+    render();
+  } else if (act === 'reset-prefs') {
+    theme = localStorage.theme = 'auto';
+    reducedMotion = false; localStorage.reducedMotion = '0';
+    showDehetQuiz = true; localStorage.showDehetQuiz = '1';
+    showDetails = true; localStorage.showDetails = '1';
+    showHints = true; localStorage.showHints = '1';
+    applyTheme();
+    render();
+    showToast('Preferences reset to defaults.');
   } else if (act === 'open-filters') {
     activeModal = 'filters';
     renderModals();
