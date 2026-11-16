@@ -12,11 +12,18 @@
 </head>
 <body>
   <header>
-    <h1 class="brand"><img src="icon.svg" alt="" class="brand-icon" width="30" height="30">Woordjes</h1>
-    <div class="header-actions">
-      <button id="reports-btn" class="ghost" hidden>🚩 <span id="reports-count">0</span></button>
-      <button id="logout" hidden>Log out</button>
+    <div class="header-top">
+      <h1 class="brand"><img src="icon.svg" alt="" class="brand-icon" width="30" height="30">Woordjes</h1>
+      <div class="header-actions">
+        <button id="reports-btn" class="ghost" hidden>🚩 <span id="reports-count">0</span></button>
+        <button id="logout" hidden>Log out</button>
+      </div>
     </div>
+    <nav id="main-tabs" class="main-tabs" hidden>
+      <button type="button" class="tab-btn active" data-act="switch-tab" data-tab="study">🎯 Study</button>
+      <button type="button" class="tab-btn" data-act="switch-tab" data-tab="curriculum">📚 Thema’s &amp; Levels</button>
+      <button type="button" class="tab-btn" data-act="switch-tab" data-tab="progress">📊 Progress &amp; History</button>
+    </nav>
   </header>
   <main id="app"></main>
   <div id="toast" class="toast" hidden></div>

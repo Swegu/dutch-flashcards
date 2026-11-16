@@ -47,7 +47,15 @@ Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and pr
 
 - **Topic Packs & Smart Shuffle**: Filter cards by everyday topics (*Food & Drink*, *Travel & Transport*, *Home & Daily*, *Work & Money*, *Body & Health*) and toggle Windowed Shuffle (randomizes within the next usefulness tier while keeping due cards prioritized).
 
-- **Spaced Repetition & Shortcuts**: Rate *Again / Good / Easy* (`1`, `2`, `3`; `Space`/`Enter` flips; `Z` undoes the last rating; `/` searches; `R` reports a card). Cards move through 7 Leitner boxes (`0, 1, 3, 7, 14, 30, 60` days).
+- **De Opmaat Thema’s (1–9)**:
+  - Includes all 9 coursebook Thema word lists (*Kennismaken en afspreken* through *Opleiding en werk*) with authoritative `de` / `het` / `het, de` articles and English meanings, ready immediately on startup and enriched with Wiktionary IPA/examples in the background.
+  - Filter by any Thema from the Study dropdown or browse full searchable Thema word lists in the **📚 Thema’s & Levels** tab.
+
+- **Typing Mode & `de / het` Emphasis**:
+  - Switch between **🃏 Flashcards** (with quick **`de` (`D`) / `het` (`H`)** article guess buttons before flipping) and **⌨️ Type Word** (English prompt with **`de` / `het`** pills, forgiving matcher for parenthetical/slash/accent variants, **`💡 Hint`**, and partial-credit feedback when spelling is right but the article is wrong).
+  - Toggle **🏷️ de/het Nouns** to drill noun articles exclusively, and track your **`de / het Accuracy`** in the **📊 Progress & History** tab.
+
+- **Spaced Repetition & Shortcuts**: Rate *Again / Good / Easy* (`1`, `2`, `3`; `Space`/`Enter` flips or focuses typing; `D`/`H` guesses `de`/`het` on noun flashcards; `Z` undoes the last rating; `/` searches; `R` reports a card). Cards move through 7 Leitner boxes (`0, 1, 3, 7, 14, 30, 60` days).
 
 - **Report Wrong & Global Skip**: Flag incorrect cards (`🚩`). Reported cards are hidden immediately from your queue and listed in the header review drawer (`🚩`), where they can be skipped globally for all users or dismissed.
 
@@ -56,10 +64,11 @@ Changing `WORD_LIMIT` refreshes the word list on the next start; accounts and pr
 ## Layout
 
 ```text
-src/server.js   API, auth, daily learn pattern, CEFR levels, spaced repetition, search, reports, stats
+src/server.js   API, auth, daily learn pattern, CEFR levels, Thema's, spaced repetition, search, reports, stats
+src/themas.js   De Opmaat Thema 1-9 word lists, de/het parser, English glosses, DB seeder
 src/import.js   first-start dictionary import, lemmatization, cross-check, topics, CEFR level assignment
-src/db.js       SQLite schema, migrations, and CEFR level classifier/backfill
-public/         frontend (index.html, app.js, style.css)
+src/db.js       SQLite schema, migrations, CEFR level classifier/backfill, Thema seeder
+public/         frontend (index.html, app.js, style.css, icon.svg, manifest.json)
 Dockerfile, docker-compose.yml
 ```
 

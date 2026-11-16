@@ -12,6 +12,8 @@ const DAILY_GOAL_BONUS = 50;
 const ALLOWED_TOPICS = new Set(['all', 'food', 'travel', 'home', 'work', 'health']);
 const CEFR_LEVELS = db.CEFR_LEVELS || ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const ALLOWED_LEVELS = new Set(['auto', 'all', ...CEFR_LEVELS]);
+const THEMA_LIST = db.THEMA_LIST || [];
+const ALLOWED_THEMAS = new Set(['all', ...THEMA_LIST.map(t => t.slug)]);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -97,6 +99,7 @@ function formatCard(w) {
     forms: w.forms ? JSON.parse(w.forms) : [],
     lemma: w.lemma || null,
     topics: w.topics ? JSON.parse(w.topics) : [],
+    themas: w.themas ? JSON.parse(w.themas) : [],
     sourceUrl: `https://en.wiktionary.org/wiki/${encodeURIComponent(w.word)}#Dutch`,
   };
 }
@@ -109,9 +112,12 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
-function getLevelsBreakdown(uid, topic = 'all') {
+function getLevelsBreakdown(uid, topic = 'all', thema = 'all', dehet = false) {
   const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
   const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
+  const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
+  const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
+  const dehetSql = dehet ? "AND w.article IS NOT NULL AND w.article != ''" : '';
   const rows = db.prepare(`
     SELECT w.level,
            COUNT(*) AS total,
@@ -123,8 +129,10 @@ function getLevelsBreakdown(uid, topic = 'all') {
     WHERE w.globally_skipped = 0
       AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
       ${topicSql}
+      ${themaSql}
+      ${dehetSql}
     GROUP BY w.level
-  `).all(MASTERED_BOX, Date.now(), uid, uid, ...topicParams);
+  `).all(MASTERED_BOX, Date.now(), uid, uid, ...topicParams, ...themaParams);
 
   const byLevel = new Map(rows.map(r => [r.level, r]));
   return CEFR_LEVELS.map(lvl => {
@@ -137,6 +145,46 @@ function getLevelsBreakdown(uid, topic = 'all') {
       due: r.due,
     };
   });
+}
+
+function getThemasBreakdown(uid) {
+  const map = new Map(THEMA_LIST.map(t => [t.slug, {
+    ...t,
+    total: 0,
+    nouns: 0,
+    learned: 0,
+    mastered: 0,
+    due: 0,
+  }]));
+
+  const now = Date.now();
+  const rows = db.prepare(`
+    SELECT w.themas, w.article, p.word_id AS has_prog, p.box, p.due
+    FROM words w
+    LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
+    WHERE w.themas IS NOT NULL
+      AND w.globally_skipped = 0
+      AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+  `).all(uid, uid);
+
+  for (const r of rows) {
+    let slugs;
+    try { slugs = JSON.parse(r.themas); } catch { continue; }
+    if (!Array.isArray(slugs)) continue;
+    for (const s of slugs) {
+      const t = map.get(s);
+      if (!t) continue;
+      t.total++;
+      if (r.article) t.nouns++;
+      if (r.has_prog !== null) {
+        t.learned++;
+        if ((r.box || 0) >= MASTERED_BOX) t.mastered++;
+        if ((r.due || 0) <= now) t.due++;
+      }
+    }
+  }
+
+  return [...map.values()];
 }
 
 function resolveActiveLevel(levelsBreakdown) {
@@ -166,6 +214,8 @@ app.get('/api/cards', auth, (req, res) => {
   const limit = Math.min(+req.query.limit || 10, 30);
   const exclude = String(req.query.exclude || '').split(',').map(Number).filter(Number.isInteger);
   const topic = ALLOWED_TOPICS.has(req.query.topic) ? req.query.topic : 'all';
+  const thema = ALLOWED_THEMAS.has(req.query.thema) ? req.query.thema : 'all';
+  const dehet = req.query.dehet === '1';
   const requestedLevel = ALLOWED_LEVELS.has(req.query.level) ? req.query.level : (req.user.target_level || 'auto');
   const shuffle = req.query.shuffle !== '0';
   const mode = req.query.mode === 'free' ? 'free' : 'daily';
@@ -178,8 +228,11 @@ app.get('/api/cards', auth, (req, res) => {
   const exSql = exclude.length ? `AND w.id NOT IN (${exclude.map(() => '?').join()})` : '';
   const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
   const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
+  const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
+  const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
+  const dehetSql = dehet ? "AND w.article IS NOT NULL AND w.article != ''" : '';
 
-  const levelsBreakdown = getLevelsBreakdown(uid, topic);
+  const levelsBreakdown = getLevelsBreakdown(uid, topic, thema, dehet);
   const activeLevel = requestedLevel === 'auto'
     ? resolveActiveLevel(levelsBreakdown)
     : (CEFR_LEVELS.includes(requestedLevel) ? requestedLevel : null);
@@ -225,10 +278,12 @@ app.get('/api/cards', auth, (req, res) => {
       AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
       ${strictLevelSql}
       ${topicSql}
+      ${themaSql}
+      ${dehetSql}
       ${exSql}
     ORDER BY (p.wrong > p.correct) DESC, p.box ASC, p.due ASC
     LIMIT ?
-  `).all(uid, now, uid, ...strictLevelParams, ...topicParams, ...exclude, duePoolLimit);
+  `).all(uid, now, uid, ...strictLevelParams, ...topicParams, ...themaParams, ...exclude, duePoolLimit);
 
   if (shuffle && due.length > 1) {
     const struggled = due.filter(c => c.wrong > c.correct);
@@ -262,10 +317,12 @@ app.get('/api/cards', auth, (req, res) => {
           AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
           ${lvlClause}
           ${topicSql}
+          ${themaSql}
+          ${dehetSql}
           ${exClause}
-        ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.id ASC
+        ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.word ASC, w.id ASC
         LIMIT ?
-      `).all(uid, uid, ...lvlParams, ...topicParams, ...allEx, poolSize);
+      `).all(uid, uid, ...lvlParams, ...topicParams, ...themaParams, ...allEx, poolSize);
       if (shuffle && rows.length > 1) shuffleInPlace(rows);
       return rows.slice(0, neededCount);
     };
@@ -314,10 +371,12 @@ app.get('/api/cards', auth, (req, res) => {
         AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
         ${strictLevelSql}
         ${topicSql}
+        ${themaSql}
+        ${dehetSql}
         ${usedClause}
       ORDER BY p.box ASC, (p.wrong > p.correct) DESC, p.due ASC
       LIMIT ?
-    `).all(uid, uid, ...strictLevelParams, ...topicParams, ...allUsedIds, consPoolLimit);
+    `).all(uid, uid, ...strictLevelParams, ...topicParams, ...themaParams, ...allUsedIds, consPoolLimit);
 
     if (shuffle && cons.length > 1) shuffleInPlace(cons);
     pickedConsolidate = cons.slice(0, neededConsolidate);
@@ -325,6 +384,27 @@ app.get('/api/cards', auth, (req, res) => {
 
   const ordered = interleavePattern(pickedDue, pickedFresh, pickedConsolidate);
   res.json(ordered.map(formatCard));
+});
+
+app.get('/api/themas', auth, (req, res) => {
+  res.json(getThemasBreakdown(req.user.id));
+});
+
+app.get('/api/thema/:slug/words', auth, (req, res) => {
+  const slug = String(req.params.slug || '').trim();
+  const themaMeta = THEMA_LIST.find(t => t.slug === slug);
+  if (!themaMeta) return res.status(404).json({ error: 'Unknown thema' });
+  const uid = req.user.id;
+  const rows = db.prepare(`
+    SELECT w.*, COALESCE(p.box, 0) AS box, (p.word_id IS NULL) AS isNew
+    FROM words w
+    LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
+    WHERE w.globally_skipped = 0
+      AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
+      AND w.themas LIKE ?
+    ORDER BY w.word ASC
+  `).all(uid, uid, `%"${slug}"%`);
+  res.json({ thema: themaMeta, words: rows.map(formatCard) });
 });
 
 app.get('/api/word/:term', auth, (req, res) => {
@@ -439,7 +519,7 @@ app.post('/api/reports/:wordId/resolve', auth, (req, res) => {
 function getStats(uid) {
   const u = db.prepare(`
     SELECT score, streak, best_streak, daily_new_goal, daily_review_goal, target_level,
-           day_streak, best_day_streak, last_study_day
+           day_streak, best_day_streak, last_study_day, dehet_correct, dehet_wrong
     FROM users WHERE id=?
   `).get(uid);
 
@@ -460,8 +540,12 @@ function getStats(uid) {
   const completedWordsToday = db.prepare('SELECT COUNT(*) n FROM daily_words WHERE user_id=? AND day=?').get(uid, day).n;
 
   const levels = getLevelsBreakdown(uid);
+  const themas = getThemasBreakdown(uid);
   const autoLevel = resolveActiveLevel(levels);
   const activeLevel = u.target_level === 'auto' ? autoLevel : u.target_level;
+
+  const dehetTotal = (u.dehet_correct || 0) + (u.dehet_wrong || 0);
+  const dehetAccuracy = dehetTotal ? Math.round((u.dehet_correct / dehetTotal) * 100) : 0;
 
   const goalMet = Boolean(
     todayRow.goal_met ||
@@ -479,6 +563,10 @@ function getStats(uid) {
     learned: agg.learned,
     mastered: agg.mastered,
     accuracy: agg.c + agg.w ? Math.round(agg.c / (agg.c + agg.w) * 100) : 0,
+    dehetCorrect: u.dehet_correct || 0,
+    dehetWrong: u.dehet_wrong || 0,
+    dehetTotal,
+    dehetAccuracy,
     dueNow: db.prepare(`
       SELECT COUNT(*) n FROM progress p
       JOIN words w ON w.id = p.word_id
@@ -507,6 +595,7 @@ function getStats(uid) {
       reviewProgressPct: Math.min(100, Math.round((todayRow.reviews / Math.max(1, u.daily_review_goal)) * 100)),
     },
     levels,
+    themas,
     days: db.prepare(`
       SELECT day, reviews, correct, new_words AS newWords, goal_met AS goalMet
       FROM (SELECT * FROM daily WHERE user_id=? ORDER BY day DESC LIMIT 7)
@@ -546,9 +635,12 @@ app.get('/api/daily-words', auth, (req, res) => {
 
 // rating: 0 = again, 1 = good, 2 = easy
 app.post('/api/review', auth, (req, res) => {
-  const { wordId, rating } = req.body || {};
+  const { wordId, rating, dehetGuess } = req.body || {};
   if (!Number.isInteger(wordId) || ![0, 1, 2].includes(rating)) return res.status(400).json({ error: 'Bad request' });
   if (!db.prepare('SELECT 1 FROM words WHERE id=?').get(wordId)) return res.status(404).json({ error: 'Unknown word' });
+
+  const dehetC = dehetGuess === 'correct' ? 1 : 0;
+  const dehetW = dehetGuess === 'wrong' ? 1 : 0;
 
   const uid = req.user.id, now = Date.now(), day = todayIso();
   const prevProgress = db.prepare('SELECT box, due, correct, wrong FROM progress WHERE user_id=? AND word_id=?').get(uid, wordId) || null;
@@ -561,6 +653,8 @@ app.post('/api/review', auth, (req, res) => {
     dayStreak: req.user.day_streak || 0,
     bestDayStreak: req.user.best_day_streak || 0,
     lastStudyDay: req.user.last_study_day || null,
+    dehetCorrect: req.user.dehet_correct || 0,
+    dehetWrong: req.user.dehet_wrong || 0,
   };
 
   const isFirstReview = !prevProgress;
@@ -599,9 +693,10 @@ app.post('/api/review', auth, (req, res) => {
     db.prepare(`
       UPDATE users
       SET score=score+?, streak=?, best_streak=MAX(best_streak,?),
-          day_streak=?, best_day_streak=?, last_study_day=?
+          day_streak=?, best_day_streak=?, last_study_day=?,
+          dehet_correct=dehet_correct+?, dehet_wrong=dehet_wrong+?
       WHERE id=?
-    `).run(gained, streak, streak, dayStreak, bestDayStreak, day, uid);
+    `).run(gained, streak, streak, dayStreak, bestDayStreak, day, dehetC, dehetW, uid);
 
     db.prepare(`
       INSERT INTO daily(user_id, day, reviews, correct, new_words, goal_met)
@@ -650,7 +745,9 @@ app.post('/api/review/undo', auth, (req, res) => {
       SET score=?, streak=?, best_streak=?,
           day_streak=COALESCE(?, day_streak),
           best_day_streak=COALESCE(?, best_day_streak),
-          last_study_day=?
+          last_study_day=?,
+          dehet_correct=COALESCE(?, dehet_correct),
+          dehet_wrong=COALESCE(?, dehet_wrong)
       WHERE id=?
     `).run(
       prevUser.score,
@@ -659,6 +756,8 @@ app.post('/api/review/undo', auth, (req, res) => {
       prevUser.dayStreak ?? null,
       prevUser.bestDayStreak ?? null,
       prevUser.lastStudyDay ?? null,
+      prevUser.dehetCorrect ?? null,
+      prevUser.dehetWrong ?? null,
       uid
     );
     if (day) {

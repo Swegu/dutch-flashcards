@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { THEMA_LIST, seedThemaWords } = require('./themas');
 
 const dir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 fs.mkdirSync(dir, { recursive: true });
@@ -11,6 +12,7 @@ db.pragma('foreign_keys = ON');
 
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const LEVELS_VERSION = '1';
+const THEMAS_VERSION = '1';
 
 function computeWordLevel({ rank, word, topics, exampleNl, rawTopics }) {
   if (rawTopics) {
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS words(
   forms TEXT,
   lemma TEXT,
   topics TEXT,
+  themas TEXT,
   level TEXT NOT NULL DEFAULT 'C2',
   globally_skipped INTEGER NOT NULL DEFAULT 0
 );
@@ -81,7 +84,9 @@ CREATE TABLE IF NOT EXISTS users(
   target_level TEXT NOT NULL DEFAULT 'auto',
   day_streak INTEGER NOT NULL DEFAULT 0,
   best_day_streak INTEGER NOT NULL DEFAULT 0,
-  last_study_day TEXT
+  last_study_day TEXT,
+  dehet_correct INTEGER NOT NULL DEFAULT 0,
+  dehet_wrong INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS sessions(
@@ -150,6 +155,7 @@ const migrations = [
   ['forms', 'TEXT'],
   ['lemma', 'TEXT'],
   ['topics', 'TEXT'],
+  ['themas', 'TEXT'],
   ['level', "TEXT NOT NULL DEFAULT 'C2'"],
   ['globally_skipped', 'INTEGER NOT NULL DEFAULT 0'],
 ];
@@ -158,6 +164,8 @@ for (const [col, def] of migrations) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS words_skip ON words(globally_skipped)');
 db.exec('CREATE INDEX IF NOT EXISTS words_level ON words(level, rank)');
+db.exec('CREATE INDEX IF NOT EXISTS words_themas ON words(themas)');
+db.exec('CREATE INDEX IF NOT EXISTS words_article ON words(article)');
 
 const userCols = new Set(db.prepare("SELECT name FROM pragma_table_info('users')").all().map(c => c.name));
 const userMigrations = [
@@ -167,6 +175,8 @@ const userMigrations = [
   ['day_streak', 'INTEGER NOT NULL DEFAULT 0'],
   ['best_day_streak', 'INTEGER NOT NULL DEFAULT 0'],
   ['last_study_day', 'TEXT'],
+  ['dehet_correct', 'INTEGER NOT NULL DEFAULT 0'],
+  ['dehet_wrong', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 for (const [col, def] of userMigrations) {
   if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
@@ -191,15 +201,17 @@ if (rankInfo && rankInfo.notnull === 1) {
       id INTEGER PRIMARY KEY, rank INTEGER, word TEXT UNIQUE NOT NULL, pos TEXT, article TEXT,
       glosses TEXT NOT NULL, alt_glosses TEXT, meaning_conflict INTEGER NOT NULL DEFAULT 0,
       ipa TEXT, example_nl TEXT, example_en TEXT, freq INTEGER, forms TEXT, lemma TEXT,
-      topics TEXT, level TEXT NOT NULL DEFAULT 'C2', globally_skipped INTEGER NOT NULL DEFAULT 0
+      topics TEXT, themas TEXT, level TEXT NOT NULL DEFAULT 'C2', globally_skipped INTEGER NOT NULL DEFAULT 0
     );
-    INSERT INTO words_new(id,rank,word,pos,article,glosses,alt_glosses,meaning_conflict,ipa,example_nl,example_en,freq,forms,lemma,topics,level,globally_skipped)
-      SELECT id,rank,word,pos,article,glosses,alt_glosses,meaning_conflict,ipa,example_nl,example_en,freq,forms,lemma,topics,level,globally_skipped FROM words;
+    INSERT INTO words_new(id,rank,word,pos,article,glosses,alt_glosses,meaning_conflict,ipa,example_nl,example_en,freq,forms,lemma,topics,themas,level,globally_skipped)
+      SELECT id,rank,word,pos,article,glosses,alt_glosses,meaning_conflict,ipa,example_nl,example_en,freq,forms,lemma,topics,themas,level,globally_skipped FROM words;
     DROP TABLE words;
     ALTER TABLE words_new RENAME TO words;
     CREATE INDEX IF NOT EXISTS words_rank ON words(rank);
     CREATE INDEX IF NOT EXISTS words_skip ON words(globally_skipped);
     CREATE INDEX IF NOT EXISTS words_level ON words(level, rank);
+    CREATE INDEX IF NOT EXISTS words_themas ON words(themas);
+    CREATE INDEX IF NOT EXISTS words_article ON words(article);
     COMMIT;
     PRAGMA foreign_keys = ON;
   `);
@@ -226,6 +238,15 @@ if (curLevelsVer !== LEVELS_VERSION) {
   }
 }
 
+// Seed De Opmaat Thema 1-9 word lists if not yet seeded at this version
+const curThemasVer = db.prepare("SELECT value FROM meta WHERE key='themas_version'").get()?.value;
+if (curThemasVer !== THEMAS_VERSION) {
+  seedThemaWords(db);
+  db.prepare("INSERT INTO meta VALUES('themas_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(THEMAS_VERSION);
+}
+
 db.CEFR_LEVELS = CEFR_LEVELS;
+db.THEMA_LIST = THEMA_LIST;
+db.seedThemaWords = seedThemaWords;
 db.computeWordLevel = computeWordLevel;
 module.exports = db;

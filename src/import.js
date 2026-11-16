@@ -274,8 +274,8 @@ async function run() {
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(word) DO UPDATE SET
       rank=excluded.rank,
-      pos=excluded.pos,
-      article=excluded.article,
+      pos=COALESCE(excluded.pos, words.pos),
+      article=COALESCE(words.article, excluded.article),
       glosses=excluded.glosses,
       alt_glosses=excluded.alt_glosses,
       meaning_conflict=excluded.meaning_conflict,
@@ -286,7 +286,8 @@ async function run() {
       forms=excluded.forms,
       lemma=excluded.lemma,
       topics=excluded.topics,
-      level=excluded.level
+      level=excluded.level,
+      themas=words.themas
   `);
 
   db.transaction(() => {
@@ -321,6 +322,11 @@ async function run() {
     }
   })();
 
+  if (typeof db.seedThemaWords === 'function') {
+    db.seedThemaWords(db);
+    setMeta('themas_version', '1');
+  }
+
   setMeta('levels_version', '1');
   setMeta('import_version', IMPORT_VERSION);
   setMeta('import_state', 'done');
@@ -348,6 +354,7 @@ const importStatus = () => ({
   state: getMeta('import_state') || 'idle',
   message: getMeta('import_message') || '',
   ready: !!db.prepare('SELECT 1 FROM words LIMIT 1').get(),
+  enriching: running || getMeta('import_state') === 'running',
 });
 
 module.exports = { startImport, importStatus };
