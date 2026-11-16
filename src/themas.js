@@ -2300,7 +2300,10 @@ function seedThemaWords(db) {
 
           let existingGlosses = [];
           try { existingGlosses = existing.glosses ? JSON.parse(existing.glosses) : []; } catch { existingGlosses = []; }
-          const nextGlosses = existingGlosses.length ? existingGlosses : parsed.glosses;
+          const nextGlosses = [...existingGlosses];
+          for (const g of parsed.glosses) {
+            if (g && !nextGlosses.includes(g)) nextGlosses.push(g);
+          }
 
           // Authoritative PDF article takes priority if present (including 'het, de'), else preserve existing
           const nextArticle = parsed.article || existing.article || null;

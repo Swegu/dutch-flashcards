@@ -454,7 +454,7 @@ app.post('/api/settings', auth, (req, res) => {
     const todayRow = db.prepare('SELECT reviews, new_words FROM daily WHERE user_id=? AND day=?').get(uid, day);
     if (todayRow) {
       const met = (todayRow.new_words >= dailyNewGoal && todayRow.reviews >= dailyReviewGoal) ? 1 : 0;
-      db.prepare('UPDATE daily SET goal_met = MAX(goal_met, ?) WHERE user_id=? AND day=?').run(met, uid, day);
+      db.prepare('UPDATE daily SET goal_met = ? WHERE user_id=? AND day=?').run(met, uid, day);
     }
   })();
 

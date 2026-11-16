@@ -555,7 +555,7 @@ function dailyStripHtml() {
         </label>
         <label>
           <span>${t('reviewsPerDay')}</span>
-          <input id="plan-rev" type="number" min="5" max="500" value="${dp.dailyReviewGoal}">
+          <input id="plan-rev" type="number" min="1" max="500" value="${dp.dailyReviewGoal}">
         </label>
         <label>
           <span>${t('targetLevelLabel')}</span>
@@ -1188,8 +1188,9 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('click', async e => {
-  if (e.target.closest('[data-stop]') && !e.target.closest('[data-act]')) return;
   const el = e.target.closest('[data-act]');
+  const stopEl = e.target.closest('[data-stop]');
+  if (stopEl && (!el || !stopEl.contains(el))) return;
   if (!el) return;
   const act = el.dataset.act;
 
@@ -1202,6 +1203,9 @@ document.addEventListener('click', async e => {
       await loadDailyWords(dailyWordsDay);
     }
     render();
+    if (tab === 'study' && practiceMode === 'type' && card && !flipped) {
+      setTimeout(() => $('#type-input')?.focus(), 10);
+    }
   } else if (act === 'flip') {
     if (el.tagName !== 'BUTTON' && e.target.closest('button, a, input')) return;
     flip();
@@ -1383,10 +1387,15 @@ document.addEventListener('keydown', e => {
   } else {
     if (['1', '2', '3'].includes(e.key)) {
       rate(+e.key - 1);
-    } else if (e.key === 'Enter' && practiceMode === 'type' && document.activeElement?.tagName !== 'BUTTON') {
-      e.preventDefault();
-      const suggested = typeResult ? (typeResult.status === 'perfect' ? 1 : 0) : 1;
-      rate(suggested);
+    } else if (e.key === 'Enter' && document.activeElement?.tagName !== 'BUTTON') {
+      if (practiceMode === 'type') {
+        e.preventDefault();
+        const suggested = typeResult ? (typeResult.status === 'perfect' ? 1 : 0) : 1;
+        rate(suggested);
+      } else if (cardDehetGuess) {
+        e.preventDefault();
+        rate(cardDehetGuess === 'wrong' ? 0 : 1);
+      }
     }
   }
   if (e.key === 'r' || e.key === 'R') { reporting = true; render(); $('#report-reason')?.focus(); }

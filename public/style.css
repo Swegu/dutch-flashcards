@@ -24,6 +24,7 @@ button.has-reports { border-color:var(--warn); color:var(--warn); font-weight:60
 /* Top 3-Tab Navigation */
 .main-tabs { display:flex; gap:6px; margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:4px; }
 .tab-btn { flex:1; border:none; background:transparent; border-radius:9px; padding:.5em .75em; font-size:.92rem; font-weight:600; color:var(--muted); transition:background .15s, color .15s; }
+@media (max-width: 440px) { .tab-btn { font-size:.82rem; padding:.45em .4em; } }
 .tab-btn:hover { color:var(--fg); }
 .tab-btn.active { background:var(--accent); color:#fff; }
 
@@ -111,7 +112,7 @@ button.has-reports { border-color:var(--warn); color:var(--warn); font-weight:60
 .type-feedback.ok { background:rgba(31,157,85,.14); border:1px solid var(--good); color:var(--good); }
 .type-feedback.warn { background:var(--warn-bg); border:1px solid var(--warn); color:var(--warn); }
 .type-feedback.bad { background:rgba(214,69,69,.12); border:1px solid var(--bad); color:var(--bad); }
-.type-feedback code { background:rgba(0,0,0,.08); padding:1px 5px; border-radius:5px; font-size:.9em; }
+.type-feedback code { background:rgba(128,128,128,.2); padding:1px 5px; border-radius:5px; font-size:.9em; }
 .retry-type-wrap { margin-top:6px; }
 
 /* Thema Grid & Inspector */
