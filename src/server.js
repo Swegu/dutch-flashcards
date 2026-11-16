@@ -79,11 +79,12 @@ const prevDayIso = dayStr => new Date(new Date(dayStr + 'T00:00:00Z').getTime() 
 
 function formatCard(w) {
   const isNew = !!w.isNew;
+  const isNoun = !w.pos || w.pos === 'noun';
   return {
     id: w.id,
     word: w.word,
     pos: w.pos,
-    article: w.article || null,
+    article: (isNoun && w.article) ? w.article : null,
     ipa: w.ipa,
     glosses: JSON.parse(w.glosses || '[]'),
     altGlosses: w.alt_glosses ? JSON.parse(w.alt_glosses) : [],
@@ -117,7 +118,7 @@ function getLevelsBreakdown(uid, topic = 'all', thema = 'all', dehet = false) {
   const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
   const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
   const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
-  const dehetSql = dehet ? "AND w.article IS NOT NULL AND w.article != ''" : '';
+  const dehetSql = dehet ? "AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''" : '';
   const rows = db.prepare(`
     SELECT w.level,
            COUNT(*) AS total,
@@ -159,7 +160,7 @@ function getThemasBreakdown(uid) {
 
   const now = Date.now();
   const rows = db.prepare(`
-    SELECT w.themas, w.article, p.word_id AS has_prog, p.box, p.due
+    SELECT w.themas, w.pos, w.article, p.word_id AS has_prog, p.box, p.due
     FROM words w
     LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
     WHERE w.themas IS NOT NULL
@@ -171,11 +172,12 @@ function getThemasBreakdown(uid) {
     let slugs;
     try { slugs = JSON.parse(r.themas); } catch { continue; }
     if (!Array.isArray(slugs)) continue;
+    const isNounWithArt = r.article && (!r.pos || r.pos === 'noun');
     for (const s of slugs) {
       const t = map.get(s);
       if (!t) continue;
       t.total++;
-      if (r.article) t.nouns++;
+      if (isNounWithArt) t.nouns++;
       if (r.has_prog !== null) {
         t.learned++;
         if ((r.box || 0) >= MASTERED_BOX) t.mastered++;
@@ -230,7 +232,7 @@ app.get('/api/cards', auth, (req, res) => {
   const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
   const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
   const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
-  const dehetSql = dehet ? "AND w.article IS NOT NULL AND w.article != ''" : '';
+  const dehetSql = dehet ? "AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''" : '';
 
   const levelsBreakdown = getLevelsBreakdown(uid, topic, thema, dehet);
   const activeLevel = requestedLevel === 'auto'

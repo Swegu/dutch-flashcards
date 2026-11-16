@@ -239,10 +239,11 @@ async function run() {
       .slice(0, 12);
     const fallbackLemma = f.main.length === 0 && f.lemmaRefs.size > 0 ? [...f.lemmaRefs][0] : null;
 
+    const finalPos = f.pos || f.anyPos || null;
     const item = {
       word: w,
-      pos: f.pos || f.anyPos || null,
-      article: f.article,
+      pos: finalPos,
+      article: finalPos === 'noun' ? f.article : null,
       glosses,
       altGlosses,
       conflict,
@@ -275,7 +276,7 @@ async function run() {
     ON CONFLICT(word) DO UPDATE SET
       rank=excluded.rank,
       pos=COALESCE(excluded.pos, words.pos),
-      article=COALESCE(words.article, excluded.article),
+      article=CASE WHEN COALESCE(excluded.pos, words.pos, 'noun') = 'noun' THEN COALESCE(words.article, excluded.article) ELSE NULL END,
       glosses=excluded.glosses,
       alt_glosses=excluded.alt_glosses,
       meaning_conflict=excluded.meaning_conflict,

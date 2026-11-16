@@ -2280,8 +2280,8 @@ function seedThemaWords(db) {
   `);
   const updWord = db.prepare(`
     UPDATE words
-    SET article = COALESCE(?, article),
-        pos = COALESCE(pos, ?),
+    SET article = ?,
+        pos = ?,
         glosses = ?,
         themas = ?
     WHERE id = ?
@@ -2305,12 +2305,15 @@ function seedThemaWords(db) {
             if (g && !nextGlosses.includes(g)) nextGlosses.push(g);
           }
 
-          // Authoritative PDF article takes priority if present (including 'het, de'), else preserve existing
-          const nextArticle = parsed.article || existing.article || null;
+          // Only nouns carry a de/het article; verbs/other POS must not receive an article
+          const nextPos = parsed.pos || existing.pos || null;
+          const nextArticle = (nextPos && nextPos !== 'noun')
+            ? null
+            : (parsed.article || existing.article || null);
 
           updWord.run(
             nextArticle,
-            parsed.pos,
+            nextPos,
             JSON.stringify(nextGlosses),
             JSON.stringify(themas),
             existing.id

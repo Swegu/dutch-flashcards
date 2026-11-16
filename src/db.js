@@ -12,7 +12,7 @@ db.pragma('foreign_keys = ON');
 
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const LEVELS_VERSION = '1';
-const THEMAS_VERSION = '1';
+const THEMAS_VERSION = '2';
 
 function computeWordLevel({ rank, word, topics, exampleNl, rawTopics }) {
   if (rawTopics) {
@@ -241,6 +241,7 @@ if (curLevelsVer !== LEVELS_VERSION) {
 // Seed De Opmaat Thema 1-9 word lists if not yet seeded at this version
 const curThemasVer = db.prepare("SELECT value FROM meta WHERE key='themas_version'").get()?.value;
 if (curThemasVer !== THEMAS_VERSION) {
+  db.prepare("UPDATE words SET article = NULL WHERE pos IS NOT NULL AND pos != 'noun' AND article IS NOT NULL").run();
   seedThemaWords(db);
   db.prepare("INSERT INTO meta VALUES('themas_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(THEMAS_VERSION);
 }
