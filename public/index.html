@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ff6a00">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Woordjes – Dutch flashcards</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="icon.svg">
@@ -11,21 +13,79 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <div class="header-top">
-      <h1 class="brand"><img src="icon.svg" alt="" class="brand-icon" width="30" height="30">Woordjes</h1>
-      <div class="header-actions">
-        <button id="reports-btn" class="ghost" hidden>🚩 <span id="reports-count">0</span></button>
-        <button id="logout" hidden>Log out</button>
+  <div id="app-shell" class="app-shell">
+    <aside id="sidebar" class="sidebar" hidden>
+      <div class="sidebar-brand">
+        <img src="icon.svg" alt="" class="brand-icon" width="32" height="32">
+        <div>
+          <div class="brand-name">Woordjes</div>
+          <div class="brand-sub">Dutch Flashcards</div>
+        </div>
       </div>
+
+      <nav class="side-nav" aria-label="Primary">
+        <button type="button" class="nav-item active" data-act="switch-tab" data-tab="study">
+          <span class="nav-ico">🎯</span><span>Study</span>
+        </button>
+        <button type="button" class="nav-item" data-act="switch-tab" data-tab="curriculum">
+          <span class="nav-ico">📚</span><span>Thema’s &amp; Levels</span>
+        </button>
+        <button type="button" class="nav-item" data-act="switch-tab" data-tab="progress">
+          <span class="nav-ico">📊</span><span>Progress &amp; History</span>
+        </button>
+        <button type="button" class="nav-item" data-act="open-search">
+          <span class="nav-ico">🔍</span><span>Search</span><kbd>/</kbd>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button type="button" id="side-reports-btn" class="nav-item" data-act="toggle-reports" hidden>
+          <span class="nav-ico">🚩</span><span>Flagged</span><span id="side-reports-count" class="badge-count">0</span>
+        </button>
+        <button type="button" class="nav-item" data-act="cycle-theme">
+          <span class="nav-ico" id="side-theme-ico">🌓</span><span id="side-theme-label">Theme: Auto</span>
+        </button>
+        <button type="button" id="side-logout" class="nav-item danger-text" data-act="logout" hidden>
+          <span class="nav-ico">🚪</span><span>Log out</span>
+        </button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header id="topbar" class="topbar">
+        <div class="topbar-left">
+          <img src="icon.svg" alt="" class="brand-icon" width="28" height="28">
+          <span class="brand-name">Woordjes</span>
+        </div>
+        <div class="topbar-actions">
+          <span id="top-daily-pill" class="top-daily-pill" hidden></span>
+          <button type="button" id="top-search-btn" class="icon-btn" data-act="open-search" title="Search ( / )" hidden>🔍</button>
+          <button type="button" id="top-theme-btn" class="icon-btn" data-act="cycle-theme" title="Switch theme">🌓</button>
+          <button type="button" id="reports-btn" class="icon-btn" data-act="toggle-reports" hidden>🚩 <span id="reports-count">0</span></button>
+          <button type="button" id="logout" class="ghost-btn" data-act="logout" hidden>Log out</button>
+        </div>
+      </header>
+
+      <main id="app" class="app-main"></main>
     </div>
-    <nav id="main-tabs" class="main-tabs" hidden>
-      <button type="button" class="tab-btn active" data-act="switch-tab" data-tab="study">🎯 Study</button>
-      <button type="button" class="tab-btn" data-act="switch-tab" data-tab="curriculum">📚 Thema’s &amp; Levels</button>
-      <button type="button" class="tab-btn" data-act="switch-tab" data-tab="progress">📊 Progress &amp; History</button>
+
+    <nav id="bottom-nav" class="bottom-nav" aria-label="Mobile navigation" hidden>
+      <button type="button" class="bnav-item active" data-act="switch-tab" data-tab="study">
+        <span class="bnav-ico">🎯</span><span>Study</span>
+      </button>
+      <button type="button" class="bnav-item" data-act="switch-tab" data-tab="curriculum">
+        <span class="bnav-ico">📚</span><span>Thema’s</span>
+      </button>
+      <button type="button" class="bnav-item" data-act="switch-tab" data-tab="progress">
+        <span class="bnav-ico">📊</span><span>Progress</span>
+      </button>
+      <button type="button" class="bnav-item" data-act="open-plan">
+        <span class="bnav-ico">⚙️</span><span>Plan</span>
+      </button>
     </nav>
-  </header>
-  <main id="app"></main>
+  </div>
+
+  <div id="modal-root"></div>
   <div id="toast" class="toast" hidden></div>
   <script src="app.js"></script>
 </body>

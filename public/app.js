@@ -8,7 +8,7 @@ const T = {
   importing: 'Preparing the Dutch dictionary…', retry: 'Retry',
   source: 'Source', rank: 'frequency rank', unranked: 'Curriculum / Wiktionary',
   haveAccount: 'Already have an account? Log in', noAccount: 'No account yet? Create one', err: 'Something went wrong',
-  formOf: 'Form of', forms: 'Inflected forms', shuffleOn: '🎲 Shuffle', shuffleOff: '📋 Order',
+  formOf: 'Form of', forms: 'Inflected forms', shuffleOn: '🎲 Shuffle: On', shuffleOff: '📋 Order: Rank',
   report: 'Report wrong', reportTitle: 'Report incorrect card', reportHint: 'Why is this card wrong? (optional)',
   reportPlaceholder: 'e.g. wrong translation, typo, broken inflection…', sendReport: 'Report & Skip', cancel: 'Cancel',
   reportedToast: 'Card reported and hidden from your queue.', reviewReports: 'Flagged cards',
@@ -16,20 +16,20 @@ const T = {
   skippedGlobalToast: 'Skipped for all users.', dismissedToast: 'Flag dismissed.',
   conflictWarn: 'Sources disagree on meaning — verify on Wiktionary:',
   wiktionaryLabel: 'Wiktionary', freedictLabel: 'FreeDict',
-  searchPlaceholder: 'Search Dutch or English… ( / )', undo: 'Undo', undoneToast: 'Last rating undone.',
+  searchPlaceholder: 'Search Dutch or English word…', undo: 'Undo', undoneToast: 'Last rating undone.',
   dailyPattern: 'Daily Learn Pattern',
   modeDaily: '📅 Daily Plan', modeFree: '♾️ Free Practice',
   practiceFlashcard: '🃏 Flashcards', practiceType: '⌨️ Type Word',
   dehetFilter: '🏷️ de/het Nouns',
   stepNew: '🌱 New words', stepReviews: '🔄 Reviews', stepGoal: '🎯 Today',
-  goalCompleteBadge: '✓ Daily goal met',
+  goalCompleteBadge: '✓ Goal met',
   planSettings: '⚙️ Plan',
   inspectWordsBtn: '📋 Words',
   inspectCompletedBtn: '📋 Inspect Completed Words',
   dailyWordsTitle: 'Completed Words',
   noDailyWords: 'No words completed on this day yet.',
   filterAll: 'All', filterNew: '🌱 New', filterReviewed: '🔄 Reviewed',
-  openCard: 'Practice card',
+  openCard: 'Practice',
   paceLight: '🐢 Casual (5 / 15)', paceRegular: '🚶 Regular (10 / 30)', paceIntensive: '🚀 Intensive (20 / 60)',
   newPerDay: 'New words / day', reviewsPerDay: 'Total reviews / day', targetLevelLabel: 'Difficulty level',
   savePlan: 'Save daily plan', planSavedToast: 'Daily learning plan updated.',
@@ -50,7 +50,8 @@ const T = {
   hintBtn: '💡 Hint',
   retryTypeBtn: '↺ Try typing again',
   chooseArticlePrompt: 'Which article?',
-  orFlip: 'or flip card',
+  filtersTitle: 'Study Filters',
+  doneBtn: 'Done',
   levels: {
     auto: '🎓 Auto Level',
     all: 'All levels',
@@ -74,6 +75,7 @@ const T = {
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let theme = localStorage.theme || 'auto'; // 'auto' | 'light' | 'dark'
 let tab = localStorage.tab || 'study';
 let topic = localStorage.topic || 'all';
 let thema = localStorage.thema || 'all';
@@ -82,9 +84,9 @@ let dehetOnly = localStorage.dehetOnly === '1';
 let practiceMode = localStorage.practiceMode === 'type' ? 'type' : 'flashcard';
 let studyMode = localStorage.studyMode === 'free' ? 'free' : 'daily';
 let extraPractice = false;
-let editingPlan = false;
 let shuffle = localStorage.shuffle !== '0';
 
+let activeModal = null; // null | 'plan' | 'filters' | 'search'
 let stats, queue = [], card = null, flipped = false, gain = 0, mode = 'login', authErr = '';
 let reporting = false, showingReports = false, reportsList = [];
 let dailyWordsDay = '', dailyWordsList = [], dailyWordsFilter = 'all', dailyWordsLoaded = false;
@@ -92,16 +94,32 @@ let inspectThemaSlug = '', inspectThemaData = null, themaSearch = '', themaArtFi
 let searchQuery = '', searchResults = [], searchTimer = null;
 let lastUndo = null, lastReviewedCard = null, toastTimer = null;
 
-// Per-card interactive state (article quiz & typing mode)
+// Per-card interactive state
 let cardDehetGuess = null; // null | 'correct' | 'wrong'
 let cardGuessedArt = null; // null | 'de' | 'het'
 let typeArticle = null;    // null | 'de' | 'het'
 let typeText = '';
 let typeHintStep = 0;
-let typeResult = null;     // null | { status: 'perfect'|'article_wrong'|'word_wrong', wordCorrect, articleStatus, expectedFull, typedDisplay }
+let typeResult = null;
 
 const t = k => T[k];
 const view = html => { $('#app').innerHTML = html; };
+
+function applyTheme() {
+  if (theme === 'light' || theme === 'dark') {
+    document.documentElement.dataset.theme = theme;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  const icons = { auto: '🌓', light: '☀️', dark: '🌙' };
+  const labels = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
+  const sideIco = $('#side-theme-ico');
+  const sideLbl = $('#side-theme-label');
+  const topBtn = $('#top-theme-btn');
+  if (sideIco) sideIco.textContent = icons[theme];
+  if (sideLbl) sideLbl.textContent = labels[theme];
+  if (topBtn) topBtn.textContent = icons[theme];
+}
 
 function resetCardInteraction() {
   cardDehetGuess = null;
@@ -129,10 +147,13 @@ async function api(path, body) {
 }
 
 async function boot() {
-  $('#logout').textContent = t('logout');
+  applyTheme();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
   const s = await api('status');
   if (!s.ready && s.state === 'error') {
-    return view(`<div class="panel"><p class="err">${esc(s.message)}</p><button data-act="retry">${t('retry')}</button></div>`);
+    return view(`<div class="panel"><p class="err">${esc(s.message)}</p><button type="button" class="primary" data-act="retry">${t('retry')}</button></div>`);
   }
   if (!s.ready) {
     view(`<div class="panel"><p>${t('importing')}</p><p class="muted">${esc(s.message)}</p></div>`);
@@ -142,19 +163,43 @@ async function boot() {
   catch (e) { e.status === 401 ? renderAuth() : view(`<p class="err">${esc(e.message)}</p>`); }
 }
 
-function updateHeaderBadges() {
-  if (!stats) return;
+function updateChrome() {
+  const loggedIn = !!stats;
+  $('#app-shell')?.classList.toggle('auth-mode', !loggedIn);
+  $('#sidebar').hidden = !loggedIn;
+  $('#bottom-nav').hidden = !loggedIn;
+  $('#logout').hidden = !loggedIn;
+  $('#side-logout').hidden = !loggedIn;
+  $('#top-search-btn').hidden = !loggedIn;
+
   const repBtn = $('#reports-btn');
-  repBtn.hidden = false;
-  $('#reports-count').textContent = stats.openReports || 0;
-  repBtn.classList.toggle('has-reports', (stats.openReports || 0) > 0);
-  const tabsEl = $('#main-tabs');
-  if (tabsEl) {
-    tabsEl.hidden = false;
-    tabsEl.querySelectorAll('.tab-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === tab);
-    });
+  const sideRepBtn = $('#side-reports-btn');
+  repBtn.hidden = !loggedIn;
+  sideRepBtn.hidden = !loggedIn;
+
+  if (!loggedIn) {
+    $('#top-daily-pill').hidden = true;
+    return;
   }
+
+  const count = stats.openReports || 0;
+  $('#reports-count').textContent = count;
+  $('#side-reports-count').textContent = count;
+  repBtn.classList.toggle('has-reports', count > 0);
+  sideRepBtn.classList.toggle('has-reports', count > 0);
+  sideRepBtn.classList.toggle('active', showingReports);
+
+  const dp = stats.dailyPlan;
+  const pill = $('#top-daily-pill');
+  if (dp) {
+    pill.hidden = false;
+    pill.classList.toggle('done', !!dp.goalMet);
+    pill.textContent = dp.goalMet ? `✓ ${dp.reviewsToday}/${dp.dailyReviewGoal}` : `🎯 ${dp.reviewsToday}/${dp.dailyReviewGoal}`;
+  }
+
+  document.querySelectorAll('.nav-item[data-tab], .bnav-item[data-tab]').forEach(btn => {
+    btn.classList.toggle('active', !showingReports && btn.dataset.tab === tab);
+  });
 }
 
 async function start() {
@@ -162,11 +207,11 @@ async function start() {
   if (stats.dailyPlan?.targetLevel) {
     level = localStorage.level = stats.dailyPlan.targetLevel;
   }
-  queue = []; card = null; showingReports = false; reporting = false; editingPlan = false; extraPractice = false;
+  queue = []; card = null; showingReports = false; reporting = false; activeModal = null; extraPractice = false;
   dailyWordsLoaded = false;
   resetCardInteraction();
-  $('#logout').hidden = false;
-  updateHeaderBadges();
+  updateChrome();
+  renderModals();
   if (tab === 'progress') await loadDailyWords('');
   await next();
 }
@@ -204,7 +249,7 @@ async function next() {
   reporting = false;
   resetCardInteraction();
   render();
-  if (practiceMode === 'type' && tab === 'study' && card) {
+  if (practiceMode === 'type' && tab === 'study' && card && !activeModal) {
     setTimeout(() => $('#type-input')?.focus(), 10);
   }
   if (queue.length < 3) fill().catch(() => {});
@@ -218,11 +263,13 @@ async function jumpToWord(wordStr) {
     flipped = false;
     reporting = false;
     showingReports = false;
+    activeModal = null;
     resetCardInteraction();
     tab = localStorage.tab = 'study';
     searchQuery = '';
     searchResults = [];
-    updateHeaderBadges();
+    updateChrome();
+    renderModals();
     render();
     if (practiceMode === 'type') setTimeout(() => $('#type-input')?.focus(), 10);
   } catch (e) {
@@ -264,21 +311,17 @@ function buildAcceptableCandidates(rawWord) {
   const w = normStr(rawWord);
   out.add(w);
 
-  // Strip parenthetical note e.g. "aanmelden (zich)" -> "aanmelden"
   const noParens = normStr(w.replace(/\([^)]*\)/g, ''));
   if (noParens) out.add(noParens);
 
-  // Also allow inline optional suffixes like "motor(fiets)" -> "motorfiets" & "welk(e)" -> "welke"
   const joinedParens = normStr(w.replace(/[()]/g, ''));
   if (joinedParens) out.add(joinedParens);
 
-  // Reflexive "zich aanmelden" if "(zich)" is present
   if (/\(zich\)/i.test(w) && noParens) {
     out.add(`zich ${noParens}`);
     out.add(`${noParens} zich`);
   }
 
-  // Split slash alternatives e.g. "je/ jij", "tablet/ i-pad", "net / netjes"
   for (const variant of [...out]) {
     if (variant.includes('/')) {
       for (const part of variant.split('/')) {
@@ -288,7 +331,6 @@ function buildAcceptableCandidates(rawWord) {
     }
   }
 
-  // Handle "door … gaan" -> "doorgaan" and "door gaan"
   if (w.includes('...')) {
     const collapsed = normStr(noParens.replace(/\s*\.\.\.\s*/g, ''));
     const spaced = normStr(noParens.replace(/\s*\.\.\.\s*/g, ' '));
@@ -296,7 +338,6 @@ function buildAcceptableCandidates(rawWord) {
     if (spaced) out.add(spaced);
   }
 
-  // Strip trailing punctuation like "!"
   for (const v of [...out]) {
     const noPunct = normStr(v.replace(/[!?.,]+$/g, ''));
     if (noPunct) out.add(noPunct);
@@ -309,7 +350,6 @@ function evaluateTypedAnswer(c, selArt, rawInput) {
   let typed = normStr(rawInput);
   let chosenArt = selArt;
 
-  // Detect inline typed article ("het huis" or "de auto")
   const artMatch = /^(de|het)\s+(.+)$/i.exec(typed);
   if (artMatch && c.article && normStr(c.word) !== typed) {
     if (!chosenArt) chosenArt = artMatch[1].toLowerCase();
@@ -335,16 +375,13 @@ function evaluateTypedAnswer(c, selArt, rawInput) {
     status = 'article_wrong';
   }
 
-  const expectedFull = c.article ? `${c.article} ${c.word}` : c.word;
-  const typedDisplay = (chosenArt ? `${chosenArt} ` : '') + (typed || '—');
-
   return {
     status,
     wordCorrect,
     articleStatus,
     chosenArt,
-    expectedFull,
-    typedDisplay,
+    expectedFull: c.article ? `${c.article} ${c.word}` : c.word,
+    typedDisplay: (chosenArt ? `${chosenArt} ` : '') + (typed || '—'),
   };
 }
 
@@ -389,7 +426,7 @@ async function rate(r) {
     lastUndo = res.undoToken;
     lastReviewedCard = c;
     dailyWordsLoaded = false;
-    updateHeaderBadges();
+    updateChrome();
     if (r === 0) {
       c.isNew = false;
       c.stage = 'due';
@@ -420,7 +457,7 @@ async function undoLast() {
     lastReviewedCard = null;
     dailyWordsLoaded = false;
     tab = localStorage.tab = 'study';
-    updateHeaderBadges();
+    updateChrome();
     render();
     showToast(t('undoneToast'));
   } catch (e) {
@@ -437,10 +474,12 @@ async function saveDailySettings(newGoal, revGoal, targetLvl) {
     });
     stats = res.stats;
     level = localStorage.level = stats.dailyPlan.targetLevel;
-    editingPlan = false;
+    activeModal = null;
     extraPractice = false;
     queue = [];
     card = null;
+    updateChrome();
+    renderModals();
     showToast(t('planSavedToast'));
     await next();
   } catch (e) {
@@ -487,7 +526,7 @@ async function submitReport(reason) {
     const res = await api('report', { wordId: reportedId, reason });
     stats = res.stats;
     queue = queue.filter(x => x.id !== reportedId);
-    updateHeaderBadges();
+    updateChrome();
     showToast(t('reportedToast'));
     await next();
   } catch (e) {
@@ -498,7 +537,9 @@ async function submitReport(reason) {
 async function openReportsView() {
   showingReports = true;
   tab = localStorage.tab = 'study';
-  updateHeaderBadges();
+  activeModal = null;
+  updateChrome();
+  renderModals();
   render();
   try {
     reportsList = await api('reports');
@@ -513,7 +554,7 @@ async function resolveReport(wordId, action) {
     const res = await api(`reports/${wordId}/resolve`, { action });
     stats = res.stats;
     reportsList = reportsList.filter(r => r.id !== wordId);
-    updateHeaderBadges();
+    updateChrome();
     render();
     showToast(t(action === 'skip_all' ? 'skippedGlobalToast' : 'dismissedToast'));
   } catch (e) {
@@ -532,91 +573,7 @@ function articlePillHtml(art) {
   return `<span class="art-pill ${articleClass(art)}">${esc(art)}</span>`;
 }
 
-function dailyStripHtml() {
-  const dp = stats.dailyPlan;
-  if (!dp) return '';
-  const activeLvlLabel = dp.targetLevel === 'auto'
-    ? `${t('levels').auto} (${dp.autoLevel})`
-    : (t('levels')[dp.targetLevel] || dp.targetLevel);
-  const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
-  const completedCount = dp.completedWordsToday ?? dp.newToday ?? 0;
-
-  const settingsDrawer = editingPlan ? `
-    <div class="plan-drawer">
-      <div class="pace-presets">
-        <button type="button" class="${dp.dailyNewGoal === 5 && dp.dailyReviewGoal === 15 ? 'active' : ''}" data-act="preset-pace" data-new="5" data-rev="15">${t('paceLight')}</button>
-        <button type="button" class="${dp.dailyNewGoal === 10 && dp.dailyReviewGoal === 30 ? 'active' : ''}" data-act="preset-pace" data-new="10" data-rev="30">${t('paceRegular')}</button>
-        <button type="button" class="${dp.dailyNewGoal === 20 && dp.dailyReviewGoal === 60 ? 'active' : ''}" data-act="preset-pace" data-new="20" data-rev="60">${t('paceIntensive')}</button>
-      </div>
-      <div class="plan-grid">
-        <label>
-          <span>${t('newPerDay')}</span>
-          <input id="plan-new" type="number" min="1" max="100" value="${dp.dailyNewGoal}">
-        </label>
-        <label>
-          <span>${t('reviewsPerDay')}</span>
-          <input id="plan-rev" type="number" min="1" max="500" value="${dp.dailyReviewGoal}">
-        </label>
-        <label>
-          <span>${t('targetLevelLabel')}</span>
-          <select id="plan-level">
-            ${Object.entries(t('levels')).map(([k, lbl]) => `
-              <option value="${k}"${dp.targetLevel === k ? ' selected' : ''}>${esc(k === 'auto' ? `${lbl} (${dp.autoLevel})` : lbl)}</option>
-            `).join('')}
-          </select>
-        </label>
-      </div>
-      <div class="row-actions">
-        <button type="button" class="primary" data-act="save-plan">${t('savePlan')}</button>
-        <button type="button" data-act="toggle-plan">${t('cancel')}</button>
-      </div>
-    </div>` : '';
-
-  return `<section class="panel daily-panel ${dp.goalMet ? 'goal-met' : ''}">
-    <div class="daily-head">
-      <div class="daily-title-wrap">
-        <h2>${t('dailyPattern')}</h2>
-        <span class="pill level-badge level-${esc(dp.activeLevel === 'all' ? 'A1' : dp.activeLevel)}">${esc(activeLvlLabel)}</span>
-        <span class="mini-kpi" title="${t('dayStreak')}">🔥 ${stats.dayStreak || 0}d</span>
-        <span class="mini-kpi" title="${t('due')}">⏰ ${stats.dueNow}</span>
-        <span class="mini-kpi" title="${t('score')}">⭐ ${stats.score}</span>
-      </div>
-      <div class="daily-actions">
-        <button type="button" data-act="inspect-today-words">${t('inspectWordsBtn')} (${completedCount})</button>
-        <button type="button" class="${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
-          ${t(studyMode === 'daily' ? 'modeDaily' : 'modeFree')}
-        </button>
-        <button type="button" class="${editingPlan ? 'active' : ''}" data-act="toggle-plan">${t('planSettings')}</button>
-      </div>
-    </div>
-    <div class="pattern-steps">
-      <div class="pattern-step ${dp.newToday >= dp.dailyNewGoal ? 'done' : ''}">
-        <div class="step-top">
-          <span>${t('stepNew')}</span>
-          <b>${dp.newToday}/${dp.dailyNewGoal}</b>
-        </div>
-        <div class="mini-bar"><i style="width:${dp.newProgressPct}%"></i></div>
-      </div>
-      <div class="pattern-step ${dp.reviewsToday >= dp.dailyReviewGoal ? 'done' : ''}">
-        <div class="step-top">
-          <span>${t('stepReviews')}</span>
-          <b>${dp.reviewsToday}/${dp.dailyReviewGoal}</b>
-        </div>
-        <div class="mini-bar"><i style="width:${dp.reviewProgressPct}%"></i></div>
-      </div>
-      <div class="pattern-step ${dp.goalMet ? 'done' : ''}">
-        <div class="step-top">
-          <span>${t('stepGoal')}</span>
-          <b>${dp.goalMet ? t('goalCompleteBadge') : `${todayAcc}%`}</b>
-        </div>
-        <div class="mini-bar"><i style="width:${dp.goalMet ? 100 : Math.round((dp.newProgressPct + dp.reviewProgressPct) / 2)}%"></i></div>
-      </div>
-    </div>
-    ${settingsDrawer}
-  </section>`;
-}
-
-function controlsHtml() {
+function filterControlsHtml(isModal = false) {
   const dp = stats.dailyPlan;
   const themaList = stats.themas || [];
   const themaOpts = `<option value="all"${thema === 'all' ? ' selected' : ''}>📚 ${esc(t('themaAll'))}</option>` +
@@ -633,33 +590,110 @@ function controlsHtml() {
     .map(([k, label]) => `<option value="${k}"${topic === k ? ' selected' : ''}>${esc(label)}</option>`)
     .join('');
 
-  return `<section class="controls-bar">
-    <div class="controls-row">
-      <div class="segmented" role="group" aria-label="Practice mode">
-        <button type="button" class="${practiceMode === 'flashcard' ? 'active' : ''}" data-act="set-practice-mode" data-mode="flashcard">${t('practiceFlashcard')}</button>
-        <button type="button" class="${practiceMode === 'type' ? 'active' : ''}" data-act="set-practice-mode" data-mode="type">${t('practiceType')}</button>
-      </div>
+  return `<div class="filter-stack">
+    <select class="filter-thema" aria-label="Thema">${themaOpts}</select>
+    <select class="filter-level" aria-label="Difficulty level">${levelOpts}</select>
+    <select class="filter-topic" aria-label="Topic">${topicOpts}</select>
+    <div class="chip-row">
       <button type="button" class="toggle-chip ${dehetOnly ? 'active-dehet' : ''}" data-act="toggle-dehet">${t('dehetFilter')}</button>
-      <button type="button" id="shuffle-toggle" class="toggle-chip ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
-      <div class="search-wrap">
-        <input id="search-input" type="search" value="${esc(searchQuery)}" placeholder="${t('searchPlaceholder')}" autocomplete="off">
-        ${searchResults.length ? `<div class="search-drop">${searchResults.map(r => `
-          <button type="button" class="search-item" data-act="jump" data-word="${esc(r.word)}">
-            <div>
-              <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
-              ${r.article ? articlePillHtml(r.article) : ''}
-              <b>${esc(r.word)}</b>
-            </div>
-            <span>${esc(r.glosses.slice(0, 2).join('; '))}</span>
-          </button>`).join('')}</div>` : ''}
+      <button type="button" class="toggle-chip ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
+    </div>
+    ${isModal ? `<button type="button" class="primary" data-act="close-modal">${t('doneBtn')}</button>` : ''}
+  </div>`;
+}
+
+function dailyRailHtml() {
+  const dp = stats.dailyPlan;
+  if (!dp) return '';
+  const activeLvlLabel = dp.targetLevel === 'auto'
+    ? `${t('levels').auto} (${dp.autoLevel})`
+    : (t('levels')[dp.targetLevel] || dp.targetLevel);
+  const todayAcc = dp.reviewsToday ? Math.round((dp.correctToday / dp.reviewsToday) * 100) : 100;
+  const completedCount = dp.completedWordsToday ?? dp.newToday ?? 0;
+
+  return `<aside class="study-rail">
+    <section class="panel rail-card ${dp.goalMet ? 'goal-met' : ''}">
+      <div class="rail-head">
+        <h2>${t('dailyPattern')}</h2>
+        <span class="pill level-badge level-${esc(dp.activeLevel === 'all' ? 'A1' : dp.activeLevel)}">${esc(activeLvlLabel)}</span>
+      </div>
+      <div class="kpi-chips">
+        <span class="mini-kpi">🔥 ${stats.dayStreak || 0}d</span>
+        <span class="mini-kpi">⏰ ${stats.dueNow} due</span>
+        <span class="mini-kpi">⭐ ${stats.score}</span>
+      </div>
+      <div class="pattern-steps">
+        <div class="pattern-step ${dp.newToday >= dp.dailyNewGoal ? 'done' : ''}">
+          <div class="step-top"><span>${t('stepNew')}</span><b>${dp.newToday}/${dp.dailyNewGoal}</b></div>
+          <div class="mini-bar"><i style="width:${dp.newProgressPct}%"></i></div>
+        </div>
+        <div class="pattern-step ${dp.reviewsToday >= dp.dailyReviewGoal ? 'done' : ''}">
+          <div class="step-top"><span>${t('stepReviews')}</span><b>${dp.reviewsToday}/${dp.dailyReviewGoal}</b></div>
+          <div class="mini-bar"><i style="width:${dp.reviewProgressPct}%"></i></div>
+        </div>
+        <div class="pattern-step ${dp.goalMet ? 'done' : ''}">
+          <div class="step-top"><span>${t('stepGoal')}</span><b>${dp.goalMet ? t('goalCompleteBadge') : `${todayAcc}%`}</b></div>
+          <div class="mini-bar"><i style="width:${dp.goalMet ? 100 : Math.round((dp.newProgressPct + dp.reviewProgressPct) / 2)}%"></i></div>
+        </div>
+      </div>
+      <div class="rail-actions">
+        <button type="button" data-act="inspect-today-words">${t('inspectWordsBtn')} (${completedCount})</button>
+        <button type="button" data-act="open-plan">${t('planSettings')}</button>
+      </div>
+    </section>
+
+    <section class="panel rail-card">
+      <div class="rail-head">
+        <h2>${t('filtersTitle')}</h2>
+        <button type="button" class="small-btn ${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
+          ${t(studyMode === 'daily' ? 'modeDaily' : 'modeFree')}
+        </button>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div class="segmented full" role="group" aria-label="Practice mode">
+          <button type="button" class="${practiceMode === 'flashcard' ? 'active' : ''}" data-act="set-practice-mode" data-mode="flashcard">${t('practiceFlashcard')}</button>
+          <button type="button" class="${practiceMode === 'type' ? 'active' : ''}" data-act="set-practice-mode" data-mode="type">${t('practiceType')}</button>
+        </div>
+      </div>
+      ${filterControlsHtml(false)}
+    </section>
+  </aside>`;
+}
+
+function mobileStudyBarHtml() {
+  const dp = stats.dailyPlan;
+  const pct = dp ? Math.round((dp.newProgressPct + dp.reviewProgressPct) / 2) : 0;
+  const thInfo = (stats.themas || []).find(x => x.slug === thema);
+  const activeSummary = [
+    thInfo ? `${thInfo.icon} T${thInfo.num}` : t('themaAll'),
+    level === 'auto' ? `🎓 ${dp?.autoLevel || 'Auto'}` : level,
+    dehetOnly ? '🏷️ de/het' : null,
+  ].filter(Boolean).join(' · ');
+
+  return `<div class="mobile-study-bar">
+    <div class="mob-strip">
+      <div class="mob-progress-wrap">
+        <span class="pill level-badge level-${esc(dp?.activeLevel === 'all' ? 'A1' : (dp?.activeLevel || 'A1'))}">${esc(dp?.activeLevel || 'A1')}</span>
+        <div class="mob-bar-col">
+          <div class="mob-bar-labels">
+            <span>${t('stepNew')} <b>${dp?.newToday || 0}/${dp?.dailyNewGoal || 10}</b></span>
+            <span>🔥 <b>${stats.dayStreak || 0}d</b></span>
+          </div>
+          <div class="mini-bar"><i style="width:${dp?.goalMet ? 100 : pct}%"></i></div>
+        </div>
+      </div>
+      <button type="button" class="small-btn ${studyMode === 'daily' ? 'active' : ''}" data-act="toggle-study-mode">
+        ${studyMode === 'daily' ? '📅 Daily' : '♾️ Free'}
+      </button>
+    </div>
+    <div class="mob-filter-row">
+      <button type="button" class="mob-filter-btn" data-act="open-filters">🎛️ ${esc(activeSummary)}</button>
+      <div class="segmented" role="group" aria-label="Practice mode">
+        <button type="button" class="${practiceMode === 'flashcard' ? 'active' : ''}" data-act="set-practice-mode" data-mode="flashcard">🃏</button>
+        <button type="button" class="${practiceMode === 'type' ? 'active' : ''}" data-act="set-practice-mode" data-mode="type">⌨️</button>
       </div>
     </div>
-    <div class="controls-row filters-row">
-      <select id="thema-select" aria-label="Thema">${themaOpts}</select>
-      <select id="level-select" aria-label="Difficulty level">${levelOpts}</select>
-      <select id="topic-select" aria-label="Topic">${topicOpts}</select>
-    </div>
-  </section>`;
+  </div>`;
 }
 
 function dailyDoneHtml() {
@@ -678,7 +712,7 @@ function dailyDoneHtml() {
     <div class="row-actions center-actions">
       <button type="button" class="primary" data-act="extra-practice">${t('continueExtra')}</button>
       <button type="button" data-act="inspect-today-words">${t('inspectCompletedBtn')} (${completedCount})</button>
-      <button type="button" data-act="toggle-plan">${t('adjustPlan')}</button>
+      <button type="button" data-act="open-plan">${t('adjustPlan')}</button>
     </div>
   </section>`;
 }
@@ -761,7 +795,7 @@ function cardHtml() {
           <button type="button" class="art-btn art-het ${typeArticle === 'het' ? 'selected' : ''}" data-act="pick-type-art" data-art="het">het</button>
         </div>` : '';
 
-      typeContent = `
+      typeContent = `<div class="card-center">
         <div class="type-prompt-label muted">${t('typePromptHint')} ${c.article ? '· <strong class="dehet-callout">include de / het</strong>' : ''}</div>
         <div class="tr prompt-gloss">${c.glosses.map(esc).join('; ')}</div>
         <div class="meta">${esc(c.pos || '')}</div>
@@ -776,7 +810,8 @@ function cardHtml() {
             <button type="button" data-act="type-hint">${t('hintBtn')}</button>
             <button type="button" data-act="flip">${t('show')}</button>
           </div>
-        </form>`;
+        </form>
+      </div>`;
     } else {
       let bannerHtml = '';
       if (typeResult) {
@@ -793,15 +828,14 @@ function cardHtml() {
         }
       }
 
-      typeContent = `
+      typeContent = `<div class="card-center">
         ${bannerHtml}
-        <div class="word">
-          ${c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}
-        </div>
+        <div class="word">${c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}</div>
         <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
         <div class="tr">${c.glosses.map(esc).join('; ')}</div>
         ${cardBackDetailsHtml(c)}
-        ${typeResult && typeResult.status !== 'perfect' ? `<div class="retry-type-wrap"><button type="button" class="small-btn" data-act="retry-type">${t('retryTypeBtn')}</button></div>` : ''}`;
+        ${typeResult && typeResult.status !== 'perfect' ? `<div><button type="button" class="small-btn" data-act="retry-type">${t('retryTypeBtn')}</button></div>` : ''}
+      </div>`;
     }
 
     return `
@@ -829,8 +863,8 @@ function cardHtml() {
           <button type="button" class="art-btn art-de" data-act="guess-art" data-art="de">de <small>D</small></button>
           <button type="button" class="art-btn art-het" data-act="guess-art" data-art="het">het <small>H</small></button>
         </div>
-        <button type="button" class="primary" data-act="flip">${t('show')} <small>Space</small></button>
-      </div>` : `<div><button type="button" class="primary" data-act="flip">${t('show')} <small>Space</small></button></div>`;
+        <button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button>
+      </div>` : `<div><button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button></div>`;
   }
 
   let guessFeedback = '';
@@ -858,15 +892,12 @@ function cardHtml() {
         </div>
       </div>
 
-      ${c.lemma ? `<div class="lemma-link">${t('formOf')} <a data-act="jump" data-word="${esc(c.lemma)}">${esc(c.lemma)}</a></div>` : ''}
-
-      <div class="word">
-        ${flipped && c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}
+      <div class="card-center">
+        ${c.lemma ? `<div class="lemma-link">${t('formOf')} <a data-act="jump" data-word="${esc(c.lemma)}">${esc(c.lemma)}</a></div>` : ''}
+        <div class="word">${flipped && c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}</div>
+        <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
+        ${reporting ? reportModal : (flipped ? back : frontQuiz)}
       </div>
-
-      <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
-
-      ${reporting ? reportModal : (flipped ? back : frontQuiz)}
     </div>
     ${flipped && !reporting ? ratingButtonsHtml(suggestedFlash) : ''}`;
 }
@@ -914,9 +945,7 @@ function curriculumTabHtml() {
         </div>
         <span class="pill level-badge level-${esc(th.level)}">${esc(th.level)}</span>
       </div>
-      <div class="thema-meta-row">
-        <span class="small"><b>${th.learned}</b>/${th.total} words · <b>${th.nouns}</b> de/het nouns${th.due ? ` · <span class="due-dot">${th.due} due</span>` : ''}</span>
-      </div>
+      <div class="small muted"><b>${th.learned}</b>/${th.total} words · <b>${th.nouns}</b> de/het nouns${th.due ? ` · <span class="due-dot">${th.due} due</span>` : ''}</div>
       <div class="bar small-bar"><i style="width:${mastPct}%"></i><i class="l" style="width:${learnPct}%"></i></div>
       <div class="row-actions">
         <button type="button" class="small-btn primary" data-act="study-thema" data-slug="${esc(th.slug)}">${t('studyThema')}</button>
@@ -1057,23 +1086,100 @@ function progressTabHtml() {
   const dehetStr = s.dehetTotal ? `${s.dehetAccuracy}% (${s.dehetCorrect}/${s.dehetTotal})` : '—';
 
   return `
-    <section class="stats stats-6">
-      <div><b>${esc(s.score)}</b><span>${t('score')}</span></div>
-      <div><b>🔥 ${s.dayStreak || 0}</b><span>${t('dayStreak')}</span></div>
-      <div><b>${s.learned}</b><span>${t('learned')}</span></div>
-      <div><b>${s.mastered}/${s.totalWords}</b><span>${t('mastered')}</span></div>
-      <div><b>${s.accuracy}%</b><span>${t('accuracy')}</span></div>
-      <div><b>${esc(dehetStr)}</b><span>${t('dehetAccuracy')}</span></div>
+    <section class="stats-grid">
+      <div class="stat-box"><b>${esc(s.score)}</b><span>${t('score')}</span></div>
+      <div class="stat-box"><b>🔥 ${s.dayStreak || 0}</b><span>${t('dayStreak')}</span></div>
+      <div class="stat-box"><b>${s.learned}</b><span>${t('learned')}</span></div>
+      <div class="stat-box"><b>${s.mastered}/${s.totalWords}</b><span>${t('mastered')}</span></div>
+      <div class="stat-box"><b>${s.accuracy}%</b><span>${t('accuracy')}</span></div>
+      <div class="stat-box"><b>${esc(dehetStr)}</b><span>${t('dehetAccuracy')}</span></div>
     </section>
     <section class="panel">
       <h2>${t('stats')}</h2>
       <p class="muted">${t('answerStreak')}: <b>${s.streak}</b> (${t('best')}: <b>${s.bestStreak}</b>) · ${t('today')}: <b>${s.today.correct}/${s.today.reviews}</b></p>
       <div class="bar"><i style="width:${pct(s.mastered, s.totalWords)}%"></i><i class="l" style="width:${pct(s.learned - s.mastered, s.totalWords)}%"></i></div>
       <h3>${t('last7')}</h3>
-      <div class="days">${s.days.map(d => `<div class="day-col ${d.goalMet ? 'day-goal-met' : ''} ${dailyWordsDay === d.day ? 'day-selected' : ''}" data-act="inspect-day" data-day="${esc(d.day)}" title="${d.day}: ${d.correct}/${d.reviews} (+${d.newWords || 0} new) — click to inspect"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}${d.goalMet ? ' ✓' : ''}</span></div>`).join('')}</div>
+      <div class="days">${s.days.map(d => `<div class="day-col ${d.goalMet ? 'day-goal-met' : ''} ${dailyWordsDay === d.day ? 'day-selected' : ''}" data-act="inspect-day" data-day="${esc(d.day)}" title="${d.day}: ${d.correct}/${d.reviews} (+${d.newWords || 0} new)"><i style="height:${Math.round(d.reviews / max * 100)}%"></i><span>${d.day.slice(5)}${d.goalMet ? ' ✓' : ''}</span></div>`).join('')}</div>
     </section>
     ${dailyWordsInspectorHtml()}
   `;
+}
+
+function renderModals() {
+  const root = $('#modal-root');
+  if (!root || !stats) {
+    if (root) root.innerHTML = '';
+    return;
+  }
+  if (!activeModal) {
+    root.innerHTML = '';
+    return;
+  }
+
+  let content = '';
+  if (activeModal === 'plan') {
+    const dp = stats.dailyPlan;
+    content = `
+      <div class="panel-head">
+        <h2>⚙️ ${t('dailyPattern')}</h2>
+        <button type="button" data-act="close-modal">✕</button>
+      </div>
+      <div class="pace-presets">
+        <button type="button" class="${dp.dailyNewGoal === 5 && dp.dailyReviewGoal === 15 ? 'active' : ''}" data-act="preset-pace" data-new="5" data-rev="15">${t('paceLight')}</button>
+        <button type="button" class="${dp.dailyNewGoal === 10 && dp.dailyReviewGoal === 30 ? 'active' : ''}" data-act="preset-pace" data-new="10" data-rev="30">${t('paceRegular')}</button>
+        <button type="button" class="${dp.dailyNewGoal === 20 && dp.dailyReviewGoal === 60 ? 'active' : ''}" data-act="preset-pace" data-new="20" data-rev="60">${t('paceIntensive')}</button>
+      </div>
+      <div class="plan-grid">
+        <label>
+          <span>${t('newPerDay')}</span>
+          <input id="plan-new" type="number" min="1" max="100" value="${dp.dailyNewGoal}">
+        </label>
+        <label>
+          <span>${t('reviewsPerDay')}</span>
+          <input id="plan-rev" type="number" min="1" max="500" value="${dp.dailyReviewGoal}">
+        </label>
+        <label>
+          <span>${t('targetLevelLabel')}</span>
+          <select id="plan-level">
+            ${Object.entries(t('levels')).map(([k, lbl]) => `
+              <option value="${k}"${dp.targetLevel === k ? ' selected' : ''}>${esc(k === 'auto' ? `${lbl} (${dp.autoLevel})` : lbl)}</option>
+            `).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="primary" data-act="save-plan">${t('savePlan')}</button>
+        <button type="button" data-act="close-modal">${t('cancel')}</button>
+      </div>`;
+  } else if (activeModal === 'filters') {
+    content = `
+      <div class="panel-head">
+        <h2>🎛️ ${t('filtersTitle')}</h2>
+        <button type="button" data-act="close-modal">✕</button>
+      </div>
+      ${filterControlsHtml(true)}`;
+  } else if (activeModal === 'search') {
+    content = `
+      <div class="panel-head">
+        <h2>🔍 Search</h2>
+        <button type="button" data-act="close-modal">✕</button>
+      </div>
+      <input id="modal-search-input" type="search" value="${esc(searchQuery)}" placeholder="${t('searchPlaceholder')}" autocomplete="off">
+      <div class="search-results-list">
+        ${searchResults.map(r => `
+          <button type="button" class="search-result-btn" data-act="jump" data-word="${esc(r.word)}">
+            <div>
+              <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
+              ${r.article ? articlePillHtml(r.article) : ''}
+              <b>${esc(r.word)}</b>
+            </div>
+            <span class="search-result-gloss">${esc(r.glosses.slice(0, 2).join('; '))}</span>
+          </button>
+        `).join('')}
+      </div>`;
+  }
+
+  root.innerHTML = `<div class="modal-backdrop" data-act="backdrop-close"><div class="modal-sheet" data-stop="1">${content}</div></div>`;
 }
 
 function render() {
@@ -1093,15 +1199,19 @@ function render() {
       ? dailyDoneHtml()
       : (card ? cardHtml() : `<div class="panel">${t('noCards')}</div>`);
     bodyHtml = `
-      ${dailyStripHtml()}
-      ${controlsHtml()}
-      ${studyStage}
+      <div class="study-layout">
+        <div class="study-stage">
+          ${mobileStudyBarHtml()}
+          ${studyStage}
+        </div>
+        ${dailyRailHtml()}
+      </div>
     `;
   }
 
   view(bodyHtml);
 
-  if (activeId === 'search-input' || activeId === 'type-input' || activeId === 'thema-word-search') {
+  if (activeId === 'type-input' || activeId === 'thema-word-search') {
     const inp = document.getElementById(activeId);
     if (inp) {
       inp.focus();
@@ -1113,16 +1223,19 @@ function render() {
 }
 
 function renderAuth() {
-  $('#logout').hidden = true;
-  $('#reports-btn').hidden = true;
-  $('#main-tabs').hidden = true;
+  stats = null;
+  activeModal = null;
+  updateChrome();
+  renderModals();
   const reg = mode === 'register';
-  view(`<form class="panel" id="auth"><h2>${t(reg ? 'register' : 'login')}</h2>
+  view(`<form class="panel auth-card" id="auth">
+    <h2>${t(reg ? 'register' : 'login')}</h2>
     <input name="username" placeholder="${t('username')}" autocomplete="username" required>
     <input name="password" type="password" placeholder="${t('password')}" autocomplete="${reg ? 'new-password' : 'current-password'}" required>
     <p class="err">${esc(authErr)}</p>
-    <button class="primary">${t(reg ? 'register' : 'login')}</button>
-    <a data-act="mode">${t(reg ? 'haveAccount' : 'noAccount')}</a></form>`);
+    <button type="submit" class="primary">${t(reg ? 'register' : 'login')}</button>
+    <a data-act="mode">${t(reg ? 'haveAccount' : 'noAccount')}</a>
+  </form>`);
 }
 
 document.addEventListener('submit', async e => {
@@ -1140,18 +1253,18 @@ document.addEventListener('submit', async e => {
 });
 
 document.addEventListener('change', async e => {
-  if (e.target.id === 'topic-select') {
+  if (e.target.classList.contains('filter-topic')) {
     topic = localStorage.topic = e.target.value;
     queue = [];
     card = null;
     await next();
-  } else if (e.target.id === 'thema-select') {
+  } else if (e.target.classList.contains('filter-thema')) {
     thema = localStorage.thema = e.target.value;
     if (stats?.dailyPlan?.goalMet) extraPractice = true;
     queue = [];
     card = null;
     await next();
-  } else if (e.target.id === 'level-select') {
+  } else if (e.target.classList.contains('filter-level')) {
     level = localStorage.level = e.target.value;
     if (stats?.dailyPlan?.goalMet) extraPractice = true;
     queue = [];
@@ -1165,18 +1278,31 @@ document.addEventListener('change', async e => {
 });
 
 document.addEventListener('input', e => {
-  if (e.target.id === 'search-input') {
+  if (e.target.id === 'modal-search-input') {
     searchQuery = e.target.value;
     clearTimeout(searchTimer);
     if (searchQuery.trim().length < 2) {
       searchResults = [];
-      render();
+      const listEl = $('.search-results-list');
+      if (listEl) listEl.innerHTML = '';
       return;
     }
     searchTimer = setTimeout(async () => {
       try {
         searchResults = await api(`search?q=${encodeURIComponent(searchQuery.trim())}`);
-        render();
+        const listEl = $('.search-results-list');
+        if (listEl) {
+          listEl.innerHTML = searchResults.map(r => `
+            <button type="button" class="search-result-btn" data-act="jump" data-word="${esc(r.word)}">
+              <div>
+                <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
+                ${r.article ? articlePillHtml(r.article) : ''}
+                <b>${esc(r.word)}</b>
+              </div>
+              <span class="search-result-gloss">${esc(r.glosses.slice(0, 2).join('; '))}</span>
+            </button>
+          `).join('');
+        }
       } catch { /* ignore */ }
     }, 180);
   } else if (e.target.id === 'type-input') {
@@ -1190,6 +1316,11 @@ document.addEventListener('input', e => {
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   const stopEl = e.target.closest('[data-stop]');
+  if (el?.dataset.act === 'backdrop-close' && e.target === el) {
+    activeModal = null;
+    renderModals();
+    return;
+  }
   if (stopEl && (!el || !stopEl.contains(el))) return;
   if (!el) return;
   const act = el.dataset.act;
@@ -1197,7 +1328,9 @@ document.addEventListener('click', async e => {
   if (act === 'switch-tab') {
     tab = localStorage.tab = el.dataset.tab || 'study';
     showingReports = false;
-    updateHeaderBadges();
+    activeModal = null;
+    updateChrome();
+    renderModals();
     if (tab === 'progress' && !dailyWordsLoaded) {
       render();
       await loadDailyWords(dailyWordsDay);
@@ -1206,6 +1339,30 @@ document.addEventListener('click', async e => {
     if (tab === 'study' && practiceMode === 'type' && card && !flipped) {
       setTimeout(() => $('#type-input')?.focus(), 10);
     }
+  } else if (act === 'cycle-theme') {
+    const order = ['auto', 'light', 'dark'];
+    theme = localStorage.theme = order[(order.indexOf(theme) + 1) % order.length];
+    applyTheme();
+  } else if (act === 'open-plan') {
+    activeModal = 'plan';
+    renderModals();
+  } else if (act === 'open-filters') {
+    activeModal = 'filters';
+    renderModals();
+  } else if (act === 'open-search') {
+    activeModal = 'search';
+    renderModals();
+    setTimeout(() => $('#modal-search-input')?.focus(), 10);
+  } else if (act === 'close-modal') {
+    activeModal = null;
+    renderModals();
+  } else if (act === 'toggle-reports') {
+    if (showingReports) { showingReports = false; updateChrome(); render(); }
+    else openReportsView();
+  } else if (act === 'logout') {
+    await api('logout', {});
+    mode = 'login';
+    renderAuth();
   } else if (act === 'flip') {
     if (el.tagName !== 'BUTTON' && e.target.closest('button, a, input')) return;
     flip();
@@ -1243,12 +1400,14 @@ document.addEventListener('click', async e => {
     queue = [];
     card = null;
     await next();
+    if (activeModal === 'filters') renderModals();
   } else if (act === 'toggle-shuffle') {
     shuffle = !shuffle;
     localStorage.shuffle = shuffle ? '1' : '0';
     queue = [];
     card = null;
     await next();
+    if (activeModal === 'filters') renderModals();
   } else if (act === 'toggle-study-mode') {
     studyMode = studyMode === 'daily' ? 'free' : 'daily';
     localStorage.studyMode = studyMode;
@@ -1264,13 +1423,15 @@ document.addEventListener('click', async e => {
   } else if (act === 'inspect-today-words') {
     tab = localStorage.tab = 'progress';
     showingReports = false;
-    updateHeaderBadges();
+    activeModal = null;
+    updateChrome();
+    renderModals();
     render();
     await loadDailyWords('');
     render();
   } else if (act === 'inspect-day') {
     tab = localStorage.tab = 'progress';
-    updateHeaderBadges();
+    updateChrome();
     await loadDailyWords(el.dataset.day || '');
     render();
   } else if (act === 'filter-daily-words') {
@@ -1283,7 +1444,7 @@ document.addEventListener('click', async e => {
     if (stats?.dailyPlan?.goalMet) extraPractice = true;
     queue = [];
     card = null;
-    updateHeaderBadges();
+    updateChrome();
     await next();
   } else if (act === 'open-thema-words') {
     await openThemaWordList(el.dataset.slug);
@@ -1293,9 +1454,6 @@ document.addEventListener('click', async e => {
     render();
   } else if (act === 'filter-thema-art') {
     themaArtFilter = el.dataset.art || 'all';
-    render();
-  } else if (act === 'toggle-plan') {
-    editingPlan = !editingPlan;
     render();
   } else if (act === 'preset-pace') {
     const newInp = $('#plan-new');
@@ -1319,7 +1477,7 @@ document.addEventListener('click', async e => {
         const res = await api('settings', { targetLevel: level });
         stats = res.stats;
       } catch { /* ignore */ }
-      updateHeaderBadges();
+      updateChrome();
       await next();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1337,6 +1495,7 @@ document.addEventListener('click', async e => {
     await submitReport($('#report-reason')?.value || '');
   } else if (act === 'close-reports') {
     showingReports = false;
+    updateChrome();
     render();
   } else if (act === 'resolve-report') {
     await resolveReport(+el.dataset.id, el.dataset.resolution);
@@ -1356,17 +1515,23 @@ document.addEventListener('click', async e => {
 });
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && activeModal) {
+    activeModal = null;
+    renderModals();
+    return;
+  }
   if (e.target.matches('input, select, textarea')) {
     if (e.key === 'Escape') {
       e.target.blur();
       if (reporting) { reporting = false; render(); }
-      if (searchResults.length) { searchResults = []; render(); }
     }
     return;
   }
-  if (e.key === '/') {
+  if (e.key === '/' && stats) {
     e.preventDefault();
-    $('#search-input')?.focus();
+    activeModal = 'search';
+    renderModals();
+    setTimeout(() => $('#modal-search-input')?.focus(), 10);
     return;
   }
   if ((e.key === 'z' || e.key === 'Z') && lastUndo) {
@@ -1374,7 +1539,7 @@ document.addEventListener('keydown', e => {
     undoLast();
     return;
   }
-  if (tab !== 'study' || !card || showingReports || reporting) return;
+  if (activeModal || tab !== 'study' || !card || showingReports || reporting) return;
   if (!flipped) {
     if (practiceMode === 'flashcard') {
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); }
@@ -1399,16 +1564,6 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'r' || e.key === 'R') { reporting = true; render(); $('#report-reason')?.focus(); }
-});
-
-$('#reports-btn').addEventListener('click', () => {
-  if (showingReports) { showingReports = false; render(); }
-  else openReportsView();
-});
-
-$('#logout').addEventListener('click', async () => {
-  await api('logout', {});
-  stats = null; mode = 'login'; renderAuth();
 });
 
 boot();
