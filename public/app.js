@@ -148,6 +148,7 @@ async function api(path, body) {
 
 async function boot() {
   applyTheme();
+  updateChrome();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
@@ -1362,6 +1363,12 @@ document.addEventListener('click', async e => {
   } else if (act === 'logout') {
     await api('logout', {});
     mode = 'login';
+    authErr = '';
+    queue = [];
+    card = null;
+    showingReports = false;
+    lastUndo = null;
+    lastReviewedCard = null;
     renderAuth();
   } else if (act === 'flip') {
     if (el.tagName !== 'BUTTON' && e.target.closest('button, a, input')) return;
