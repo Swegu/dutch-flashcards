@@ -829,7 +829,7 @@ function cardHtml() {
         }
       }
 
-      typeContent = `<div class="card-center">
+      typeContent = `<div class="card-center reveal-anim">
         ${bannerHtml}
         <div class="word">${c.article ? `${articlePillHtml(c.article)} ` : ''}${esc(c.word)}</div>
         <div class="meta">${esc(c.pos || '')} ${esc(c.ipa || '')}</div>
@@ -865,7 +865,7 @@ function cardHtml() {
           <button type="button" class="art-btn art-het" data-act="guess-art" data-art="het">het <small>H</small></button>
         </div>
         <button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button>
-      </div>` : `<div><button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button></div>`;
+      </div>` : `<div><button type="button" class="primary show-btn" data-act="flip">${t('show')} <small>Space</small></button><div class="desktop-flip-hint">Click anywhere on card to flip</div></div>`;
   }
 
   let guessFeedback = '';
@@ -875,11 +875,11 @@ function cardHtml() {
       : `<div class="type-feedback bad">✗ Article is <b>${esc(c.article.toUpperCase())}</b> ${esc(c.word)} (you picked <i>${esc(cardGuessedArt)}</i>)</div>`;
   }
 
-  const back = flipped ? `
+  const back = flipped ? `<div class="reveal-anim">
     ${guessFeedback}
     <div class="tr">${c.glosses.map(esc).join('; ')}</div>
     ${cardBackDetailsHtml(c)}
-  ` : '';
+  </div>` : '';
 
   const suggestedFlash = cardDehetGuess === 'wrong' ? 0 : (cardDehetGuess === 'correct' ? 1 : null);
 
@@ -1517,7 +1517,15 @@ document.addEventListener('click', async e => {
     renderAuth();
   } else if (act === 'retry') {
     await api('import/retry', {});
-    boot();
+    document.addEventListener('mousemove', e => {
+  const cardEl = e.target.closest('.card');
+  if (!cardEl) return;
+  const r = cardEl.getBoundingClientRect();
+  cardEl.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  cardEl.style.setProperty('--my', `${e.clientY - r.top}px`);
+}, { passive: true });
+
+boot();
   }
 });
 
@@ -1572,5 +1580,13 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'r' || e.key === 'R') { reporting = true; render(); $('#report-reason')?.focus(); }
 });
+
+document.addEventListener('mousemove', e => {
+  const cardEl = e.target.closest('.card');
+  if (!cardEl) return;
+  const r = cardEl.getBoundingClientRect();
+  cardEl.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  cardEl.style.setProperty('--my', `${e.clientY - r.top}px`);
+}, { passive: true });
 
 boot();
