@@ -90,6 +90,7 @@ let practiceMode = localStorage.practiceMode === 'type' ? 'type' : 'flashcard';
 let studyMode = localStorage.studyMode === 'free' ? 'free' : 'daily';
 let extraPractice = false;
 let shuffle = localStorage.shuffle !== '0';
+let themaOrder = localStorage.themaOrder === 'alpha' ? 'alpha' : 'random';
 
 let activeModal = null; // null | 'filters' | 'search'
 let stats, queue = [], card = null, flipped = false, gain = 0, mode = 'login', authErr = '';
@@ -224,6 +225,7 @@ async function start() {
 async function fill() {
   if (studyMode === 'daily' && !extraPractice && stats?.dailyPlan?.goalMet) return;
   const exclude = [card, ...queue].filter(Boolean).map(c => c.id);
+  const order = thema !== 'all' ? themaOrder : (shuffle ? 'random' : 'rank');
   const qs = new URLSearchParams({
     limit: '10',
     exclude: exclude.join(','),
@@ -233,7 +235,8 @@ async function fill() {
     level,
     mode: studyMode,
     extra: extraPractice ? '1' : '0',
-    shuffle: shuffle ? '1' : '0',
+    order,
+    shuffle: order === 'random' ? '1' : '0',
   });
   queue.push(...await api(`cards?${qs}`));
 }
@@ -579,6 +582,14 @@ function articlePillHtml(art) {
   return `<span class="art-pill ${articleClass(art)}">${esc(art)}</span>`;
 }
 
+function priorityBadgeHtml(c) {
+  if (!c || c.isNew) return '';
+  const p = c.priority ?? 1;
+  if (p === 2) return '<span class="pill prio-pill prio-high">🔴 High</span>';
+  if (p === 0) return '<span class="pill prio-pill prio-low">🟢 Low</span>';
+  return '<span class="pill prio-pill prio-norm">🟡 Normal</span>';
+}
+
 function filterControlsHtml(isModal = false) {
   const dp = stats.dailyPlan;
   const themaList = stats.themas || [];
@@ -596,13 +607,17 @@ function filterControlsHtml(isModal = false) {
     .map(([k, label]) => `<option value="${k}"${topic === k ? ' selected' : ''}>${esc(label)}</option>`)
     .join('');
 
+  const orderBtn = thema !== 'all'
+    ? `<button type="button" class="toggle-chip active" data-act="toggle-thema-order">${themaOrder === 'alpha' ? '🔤 Order: A–Z' : '🎲 Order: Random'}</button>`
+    : `<button type="button" class="toggle-chip ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>`;
+
   return `<div class="filter-stack">
     <select class="filter-thema" aria-label="Thema">${themaOpts}</select>
     <select class="filter-level" aria-label="Difficulty level">${levelOpts}</select>
     <select class="filter-topic" aria-label="Topic">${topicOpts}</select>
     <div class="chip-row">
       <button type="button" class="toggle-chip ${dehetOnly ? 'active-dehet' : ''}" data-act="toggle-dehet">${t('dehetFilter')}</button>
-      <button type="button" class="toggle-chip ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">${t(shuffle ? 'shuffleOn' : 'shuffleOff')}</button>
+      ${orderBtn}
     </div>
     ${isModal ? `<button type="button" class="primary" data-act="close-modal">${t('doneBtn')}</button>` : ''}
   </div>`;
@@ -738,7 +753,7 @@ function cardBadgesHtml(c) {
       ? `<span class="pill stage-pill">${t('stageConsolidate')} · ${t('boxLabel')} ${c.box}</span>`
       : `<span class="pill stage-pill">${t('stageDue')} · ${t('boxLabel')} ${c.box}</span>`);
   const levelBadge = `<span class="pill level-badge level-${esc(c.level || 'C2')}">${esc(c.level || 'C2')}</span>`;
-  return `${levelBadge}${stageBadge}${themaBadges}${topicBadges}`;
+  return `${levelBadge}${stageBadge}${priorityBadgeHtml(c)}${themaBadges}${topicBadges}`;
 }
 
 function cardBackDetailsHtml(c) {
@@ -996,7 +1011,7 @@ function curriculumTabHtml() {
                   ${w.article ? articlePillHtml(w.article) : ''}
                   <strong class="daily-word-term">${esc(w.word)}</strong>
                   <span class="pill level-badge level-${esc(w.level || 'A1')}">${esc(w.level || 'A1')}</span>
-                  ${w.isNew ? `<span class="muted small">Unseen</span>` : `<span class="pill">${t('boxLabel')} ${w.box}</span>`}
+                  ${w.isNew ? `<span class="muted small">Unseen</span>` : `<span class="pill">${t('boxLabel')} ${w.box}</span>${priorityBadgeHtml(w)}`}
                 </div>
                 <div class="daily-word-gloss">${w.glosses.map(esc).join('; ')}</div>
               </div>
@@ -1227,7 +1242,17 @@ function settingsTabHtml() {
       </div>
       <div class="setting-row">
         <div class="setting-info">
-          <strong>Card queue order</strong>
+          <strong>Thema practice order</strong>
+          <span>Study a selected Thema randomly or alphabetically (A–Z)</span>
+        </div>
+        <div class="segmented setting-ctrl" role="group" aria-label="Thema order">
+          <button type="button" class="${themaOrder === 'random' ? 'active' : ''}" data-act="set-thema-order" data-order="random">🎲 Random</button>
+          <button type="button" class="${themaOrder === 'alpha' ? 'active' : ''}" data-act="set-thema-order" data-order="alpha">🔤 A–Z</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <strong>All-words queue order</strong>
           <span>Windowed shuffle or strict frequency rank order</span>
         </div>
         <button type="button" class="setting-ctrl ${shuffle ? 'active' : ''}" data-act="toggle-shuffle">
@@ -1553,6 +1578,18 @@ document.addEventListener('click', async e => {
     card = null;
     await next();
     if (activeModal === 'filters') renderModals();
+  } else if (act === 'toggle-thema-order') {
+    themaOrder = localStorage.themaOrder = themaOrder === 'alpha' ? 'random' : 'alpha';
+    queue = [];
+    card = null;
+    await next();
+    if (activeModal === 'filters') renderModals();
+  } else if (act === 'set-thema-order') {
+    themaOrder = localStorage.themaOrder = el.dataset.order === 'alpha' ? 'alpha' : 'random';
+    queue = [];
+    card = null;
+    if (tab === 'settings') render();
+    else await next();
   } else if (act === 'toggle-shuffle') {
     shuffle = !shuffle;
     localStorage.shuffle = shuffle ? '1' : '0';

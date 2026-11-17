@@ -92,6 +92,8 @@ function formatCard(w) {
     exampleNl: w.example_nl,
     exampleEn: w.example_en,
     box: w.box ?? 0,
+    priority: w.priority ?? 1,
+    lastRating: w.last_rating ?? null,
     isNew,
     stage: w.stage || (isNew ? 'new' : 'due'),
     level: w.level || 'C2',
@@ -128,6 +130,17 @@ function buildWordFilters({ topic = 'all', thema = 'all', dehet = false } = {}) 
     clauses.push("AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''");
   }
   return { filterSql: clauses.join(' '), filterParams: params };
+}
+
+function shuffleWithinPriority(arr) {
+  const high = arr.filter(c => (c.priority ?? 1) === 2);
+  const norm = arr.filter(c => (c.priority ?? 1) === 1);
+  const low = arr.filter(c => (c.priority ?? 1) === 0);
+  shuffleInPlace(high);
+  shuffleInPlace(norm);
+  shuffleInPlace(low);
+  arr.splice(0, arr.length, ...high, ...norm, ...low);
+  return arr;
 }
 
 function getLevelsBreakdown(uid, topic = 'all', thema = 'all', dehet = false) {
@@ -231,6 +244,7 @@ app.get('/api/cards', auth, (req, res) => {
   const dehet = req.query.dehet === '1';
   const requestedLevel = ALLOWED_LEVELS.has(req.query.level) ? req.query.level : (req.user.target_level || 'auto');
   const shuffle = req.query.shuffle !== '0';
+  const order = ['random', 'alpha', 'rank'].includes(req.query.order) ? req.query.order : (shuffle ? 'random' : 'rank');
   const mode = req.query.mode === 'free' ? 'free' : 'daily';
   const extra = req.query.extra === '1';
 
@@ -275,10 +289,10 @@ app.get('/api/cards', auth, (req, res) => {
     maxNewInBatch = batchLimit;
   }
 
-  // Step 1: Fetch due cards
-  const duePoolLimit = shuffle ? Math.max(batchLimit * 3, 25) : batchLimit;
+  // Step 1: Fetch due cards (strictly ordered High -> Normal -> Low priority)
+  const duePoolLimit = order === 'random' ? Math.max(batchLimit * 3, 25) : batchLimit;
   const due = db.prepare(`
-    SELECT w.*, p.box, 0 AS isNew, 'due' AS stage
+    SELECT w.*, p.box, p.priority, p.last_rating, 0 AS isNew, 'due' AS stage
     FROM progress p
     JOIN words w ON w.id = p.word_id
     WHERE p.user_id = ?
@@ -288,16 +302,12 @@ app.get('/api/cards', auth, (req, res) => {
       ${strictLevelSql}
       ${filterSql}
       ${exSql}
-    ORDER BY (p.wrong > p.correct) DESC, p.box ASC, p.due ASC
+    ORDER BY p.priority DESC, (p.wrong > p.correct) DESC, p.box ASC, p.due ASC
     LIMIT ?
   `).all(uid, now, uid, ...strictLevelParams, ...filterParams, ...exclude, duePoolLimit);
 
-  if (shuffle && due.length > 1) {
-    const struggled = due.filter(c => c.wrong > c.correct);
-    const normal = due.filter(c => c.wrong <= c.correct);
-    shuffleInPlace(struggled);
-    shuffleInPlace(normal);
-    due.splice(0, due.length, ...struggled, ...normal);
+  if (order === 'random' && due.length > 1) {
+    shuffleWithinPriority(due);
   }
 
   // Reserve slots for daily new words so users with many due cards still learn their daily new words
@@ -315,9 +325,15 @@ app.get('/api/cards', auth, (req, res) => {
       const exClause = allEx.length ? `AND w.id NOT IN (${allEx.map(() => '?').join()})` : '';
       const lvlClause = lvl ? 'AND w.level = ?' : '';
       const lvlParams = lvl ? [lvl] : [];
-      const poolSize = shuffle ? Math.max(neededCount * 4, 45) : neededCount;
+      const isThemaRandom = order === 'random' && thema !== 'all';
+      const poolSize = order === 'random' ? (isThemaRandom ? neededCount : Math.max(neededCount * 4, 45)) : neededCount;
+      const freshOrderSql = order === 'alpha'
+        ? 'ORDER BY w.word ASC, w.id ASC'
+        : (isThemaRandom
+          ? 'ORDER BY RANDOM()'
+          : 'ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.word ASC, w.id ASC');
       const rows = db.prepare(`
-        SELECT w.*, 0 AS box, 1 AS isNew, 'new' AS stage
+        SELECT w.*, 0 AS box, 1 AS priority, NULL AS last_rating, 1 AS isNew, 'new' AS stage
         FROM words w
         WHERE w.globally_skipped = 0
           AND NOT EXISTS(SELECT 1 FROM progress p WHERE p.user_id = ? AND p.word_id = w.id)
@@ -325,10 +341,10 @@ app.get('/api/cards', auth, (req, res) => {
           ${lvlClause}
           ${filterSql}
           ${exClause}
-        ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.word ASC, w.id ASC
+        ${freshOrderSql}
         LIMIT ?
       `).all(uid, uid, ...lvlParams, ...filterParams, ...allEx, poolSize);
-      if (shuffle && rows.length > 1) shuffleInPlace(rows);
+      if (order === 'random' && !isThemaRandom && rows.length > 1) shuffleInPlace(rows);
       return rows.slice(0, neededCount);
     };
 
@@ -365,10 +381,10 @@ app.get('/api/cards', auth, (req, res) => {
     const neededConsolidate = batchLimit - (pickedDue.length + pickedFresh.length);
     const allUsedIds = [...exclude, ...pickedDue.map(c => c.id), ...pickedFresh.map(c => c.id)];
     const usedClause = allUsedIds.length ? `AND w.id NOT IN (${allUsedIds.map(() => '?').join()})` : '';
-    const consPoolLimit = shuffle ? Math.max(neededConsolidate * 3, 20) : neededConsolidate;
+    const consPoolLimit = order === 'random' ? Math.max(neededConsolidate * 3, 25) : neededConsolidate;
 
     const cons = db.prepare(`
-      SELECT w.*, p.box, 0 AS isNew, 'consolidate' AS stage
+      SELECT w.*, p.box, p.priority, p.last_rating, 0 AS isNew, 'consolidate' AS stage
       FROM progress p
       JOIN words w ON w.id = p.word_id
       WHERE p.user_id = ?
@@ -377,11 +393,11 @@ app.get('/api/cards', auth, (req, res) => {
         ${strictLevelSql}
         ${filterSql}
         ${usedClause}
-      ORDER BY p.box ASC, (p.wrong > p.correct) DESC, p.due ASC
+      ORDER BY p.priority DESC, p.box ASC, (p.wrong > p.correct) DESC, p.due ASC
       LIMIT ?
     `).all(uid, uid, ...strictLevelParams, ...filterParams, ...allUsedIds, consPoolLimit);
 
-    if (shuffle && cons.length > 1) shuffleInPlace(cons);
+    if (order === 'random' && cons.length > 1) shuffleWithinPriority(cons);
     pickedConsolidate = cons.slice(0, neededConsolidate);
   }
 
@@ -399,7 +415,7 @@ app.get('/api/thema/:slug/words', auth, (req, res) => {
   if (!themaMeta) return res.status(404).json({ error: 'Unknown thema' });
   const uid = req.user.id;
   const rows = db.prepare(`
-    SELECT w.*, COALESCE(p.box, 0) AS box, (p.word_id IS NULL) AS isNew
+    SELECT w.*, COALESCE(p.box, 0) AS box, COALESCE(p.priority, 1) AS priority, p.last_rating, (p.word_id IS NULL) AS isNew
     FROM words w
     LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
     WHERE w.globally_skipped = 0
@@ -415,7 +431,7 @@ app.get('/api/word/:term', auth, (req, res) => {
   if (!term) return res.status(400).json({ error: 'Empty query' });
   const uid = req.user.id;
   const row = db.prepare(`
-    SELECT w.*, COALESCE(p.box, 0) AS box, (p.word_id IS NULL) AS isNew
+    SELECT w.*, COALESCE(p.box, 0) AS box, COALESCE(p.priority, 1) AS priority, p.last_rating, (p.word_id IS NULL) AS isNew
     FROM words w
     LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
     WHERE w.word = ?
@@ -649,7 +665,7 @@ app.post('/api/review', auth, (req, res) => {
   const dehetW = dehetGuess === 'wrong' ? 1 : 0;
 
   const uid = req.user.id, now = Date.now(), day = todayIso();
-  const prevProgress = db.prepare('SELECT box, due, correct, wrong FROM progress WHERE user_id=? AND word_id=?').get(uid, wordId) || null;
+  const prevProgress = db.prepare('SELECT box, due, correct, wrong, priority, last_rating FROM progress WHERE user_id=? AND word_id=?').get(uid, wordId) || null;
   const prevDaily = db.prepare('SELECT reviews, correct, new_words, goal_met FROM daily WHERE user_id=? AND day=?').get(uid, day) || null;
   const prevDailyWord = db.prepare('SELECT is_new, last_rating, reviews, updated_at FROM daily_words WHERE user_id=? AND day=? AND word_id=?').get(uid, day, wordId) || null;
   const prevUser = {
@@ -665,7 +681,13 @@ app.post('/api/review', auth, (req, res) => {
 
   const isFirstReview = !prevProgress;
   const curBox = prevProgress ? prevProgress.box : 0;
-  const box = rating === 0 ? 0 : Math.min(BOX_DAYS.length - 1, curBox + rating);
+  // Priority: 2 = Highest (Again), 1 = Normal (Good), 0 = Lowest (Easy)
+  const priority = rating === 0 ? 2 : (rating === 1 ? 1 : 0);
+  const box = rating === 0
+    ? 0
+    : (rating === 2
+      ? Math.min(BOX_DAYS.length - 1, Math.max(3, curBox + 2))
+      : Math.min(BOX_DAYS.length - 1, curBox + 1));
   const due = rating === 0 ? now + 10 * 60000 : now + BOX_DAYS[box] * DAY;
   const baseGained = rating === 0 ? 0 : (rating === 1 ? 10 : 15) + Math.min(req.user.streak, 10) * 2;
   const streak = rating === 0 ? 0 : req.user.streak + 1;
@@ -692,9 +714,9 @@ app.post('/api/review', auth, (req, res) => {
 
   db.transaction(() => {
     db.prepare(`
-      INSERT INTO progress(user_id,word_id,box,due,correct,wrong) VALUES(?,?,?,?,?,?)
-      ON CONFLICT(user_id,word_id) DO UPDATE SET box=?, due=?, correct=correct+?, wrong=wrong+?
-    `).run(uid, wordId, box, due, ok, 1 - ok, box, due, ok, 1 - ok);
+      INSERT INTO progress(user_id,word_id,box,due,correct,wrong,priority,last_rating) VALUES(?,?,?,?,?,?,?,?)
+      ON CONFLICT(user_id,word_id) DO UPDATE SET box=?, due=?, correct=correct+?, wrong=wrong+?, priority=?, last_rating=?
+    `).run(uid, wordId, box, due, ok, 1 - ok, priority, rating, box, due, ok, 1 - ok, priority, rating);
 
     db.prepare(`
       UPDATE users
@@ -741,8 +763,8 @@ app.post('/api/review/undo', auth, (req, res) => {
   const uid = req.user.id;
   db.transaction(() => {
     if (prevProgress) {
-      db.prepare('UPDATE progress SET box=?, due=?, correct=?, wrong=? WHERE user_id=? AND word_id=?')
-        .run(prevProgress.box, prevProgress.due, prevProgress.correct, prevProgress.wrong, uid, wordId);
+      db.prepare('UPDATE progress SET box=?, due=?, correct=?, wrong=?, priority=?, last_rating=? WHERE user_id=? AND word_id=?')
+        .run(prevProgress.box, prevProgress.due, prevProgress.correct, prevProgress.wrong, prevProgress.priority ?? 1, prevProgress.last_rating ?? null, uid, wordId);
     } else {
       db.prepare('DELETE FROM progress WHERE user_id=? AND word_id=?').run(uid, wordId);
     }

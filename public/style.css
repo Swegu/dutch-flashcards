@@ -369,6 +369,10 @@ kbd { font:600 .72rem ui-monospace,monospace; background:var(--surface); border:
 .level-C1 { background:#d97706; }
 .level-C2 { background:#dc2626; }
 .stage-pill { font-weight:600; color:var(--fg); }
+.prio-pill { font-weight:700; }
+.prio-high { background:var(--bad-bg); color:var(--bad); border-color:var(--bad); }
+.prio-norm { background:var(--warn-bg); color:var(--warn); border-color:var(--warn); }
+.prio-low { background:var(--good-bg); color:var(--good); border-color:var(--good); }
 
 .stats-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:14px; }
 @media (max-width: 860px) { .stats-grid { grid-template-columns:repeat(3,1fr); } }

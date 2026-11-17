@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS progress(
   due INTEGER NOT NULL,
   correct INTEGER NOT NULL DEFAULT 0,
   wrong INTEGER NOT NULL DEFAULT 0,
+  priority INTEGER NOT NULL DEFAULT 1,
+  last_rating INTEGER,
   PRIMARY KEY(user_id, word_id)
 );
 CREATE INDEX IF NOT EXISTS progress_due ON progress(user_id, due);
@@ -185,6 +187,21 @@ ensureColumns('daily', [
   ['new_words', 'INTEGER NOT NULL DEFAULT 0'],
   ['goal_met', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
+
+ensureColumns('progress', [
+  ['priority', 'INTEGER NOT NULL DEFAULT 1'],
+  ['last_rating', 'INTEGER'],
+]);
+db.exec('CREATE INDEX IF NOT EXISTS progress_priority ON progress(user_id, priority DESC, due ASC)');
+db.exec(`
+  UPDATE progress
+  SET priority = CASE
+    WHEN wrong > correct OR box = 0 THEN 2
+    WHEN box >= 3 THEN 0
+    ELSE 1
+  END
+  WHERE last_rating IS NULL
+`);
 
 // Allow NULL rank on older schemas where rank had NOT NULL constraint
 const rankInfo = db.prepare("SELECT \"notnull\" FROM pragma_table_info('words') WHERE name='rank'").get();
