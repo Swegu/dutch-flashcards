@@ -113,12 +113,25 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
+function buildWordFilters({ topic = 'all', thema = 'all', dehet = false } = {}) {
+  const clauses = [];
+  const params = [];
+  if (topic !== 'all') {
+    clauses.push('AND w.topics LIKE ?');
+    params.push(`%"${topic}"%`);
+  }
+  if (thema !== 'all') {
+    clauses.push('AND w.themas LIKE ?');
+    params.push(`%"${thema}"%`);
+  }
+  if (dehet) {
+    clauses.push("AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''");
+  }
+  return { filterSql: clauses.join(' '), filterParams: params };
+}
+
 function getLevelsBreakdown(uid, topic = 'all', thema = 'all', dehet = false) {
-  const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
-  const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
-  const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
-  const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
-  const dehetSql = dehet ? "AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''" : '';
+  const { filterSql, filterParams } = buildWordFilters({ topic, thema, dehet });
   const rows = db.prepare(`
     SELECT w.level,
            COUNT(*) AS total,
@@ -129,11 +142,9 @@ function getLevelsBreakdown(uid, topic = 'all', thema = 'all', dehet = false) {
     LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
     WHERE w.globally_skipped = 0
       AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
-      ${topicSql}
-      ${themaSql}
-      ${dehetSql}
+      ${filterSql}
     GROUP BY w.level
-  `).all(MASTERED_BOX, Date.now(), uid, uid, ...topicParams, ...themaParams);
+  `).all(MASTERED_BOX, Date.now(), uid, uid, ...filterParams);
 
   const byLevel = new Map(rows.map(r => [r.level, r]));
   return CEFR_LEVELS.map(lvl => {
@@ -228,11 +239,7 @@ app.get('/api/cards', auth, (req, res) => {
   const day = todayIso();
 
   const exSql = exclude.length ? `AND w.id NOT IN (${exclude.map(() => '?').join()})` : '';
-  const topicSql = topic !== 'all' ? 'AND w.topics LIKE ?' : '';
-  const topicParams = topic !== 'all' ? [`%"${topic}"%`] : [];
-  const themaSql = thema !== 'all' ? 'AND w.themas LIKE ?' : '';
-  const themaParams = thema !== 'all' ? [`%"${thema}"%`] : [];
-  const dehetSql = dehet ? "AND (w.pos IS NULL OR w.pos = 'noun') AND w.article IS NOT NULL AND w.article != ''" : '';
+  const { filterSql, filterParams } = buildWordFilters({ topic, thema, dehet });
 
   const levelsBreakdown = getLevelsBreakdown(uid, topic, thema, dehet);
   const activeLevel = requestedLevel === 'auto'
@@ -279,13 +286,11 @@ app.get('/api/cards', auth, (req, res) => {
       AND w.globally_skipped = 0
       AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
       ${strictLevelSql}
-      ${topicSql}
-      ${themaSql}
-      ${dehetSql}
+      ${filterSql}
       ${exSql}
     ORDER BY (p.wrong > p.correct) DESC, p.box ASC, p.due ASC
     LIMIT ?
-  `).all(uid, now, uid, ...strictLevelParams, ...topicParams, ...themaParams, ...exclude, duePoolLimit);
+  `).all(uid, now, uid, ...strictLevelParams, ...filterParams, ...exclude, duePoolLimit);
 
   if (shuffle && due.length > 1) {
     const struggled = due.filter(c => c.wrong > c.correct);
@@ -318,13 +323,11 @@ app.get('/api/cards', auth, (req, res) => {
           AND NOT EXISTS(SELECT 1 FROM progress p WHERE p.user_id = ? AND p.word_id = w.id)
           AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
           ${lvlClause}
-          ${topicSql}
-          ${themaSql}
-          ${dehetSql}
+          ${filterSql}
           ${exClause}
         ORDER BY (w.rank IS NULL) ASC, w.rank ASC, w.word ASC, w.id ASC
         LIMIT ?
-      `).all(uid, uid, ...lvlParams, ...topicParams, ...themaParams, ...allEx, poolSize);
+      `).all(uid, uid, ...lvlParams, ...filterParams, ...allEx, poolSize);
       if (shuffle && rows.length > 1) shuffleInPlace(rows);
       return rows.slice(0, neededCount);
     };
@@ -372,13 +375,11 @@ app.get('/api/cards', auth, (req, res) => {
         AND w.globally_skipped = 0
         AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
         ${strictLevelSql}
-        ${topicSql}
-        ${themaSql}
-        ${dehetSql}
+        ${filterSql}
         ${usedClause}
       ORDER BY p.box ASC, (p.wrong > p.correct) DESC, p.due ASC
       LIMIT ?
-    `).all(uid, uid, ...strictLevelParams, ...topicParams, ...themaParams, ...allUsedIds, consPoolLimit);
+    `).all(uid, uid, ...strictLevelParams, ...filterParams, ...allUsedIds, consPoolLimit);
 
     if (shuffle && cons.length > 1) shuffleInPlace(cons);
     pickedConsolidate = cons.slice(0, neededConsolidate);
@@ -426,15 +427,18 @@ app.get('/api/word/:term', auth, (req, res) => {
 app.get('/api/search', auth, (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   if (q.length < 2) return res.json([]);
+  const uid = req.user.id;
   const like = `%${q}%`;
   const rows = db.prepare(`
-    SELECT w.*, 0 AS box, 1 AS isNew
+    SELECT w.*, COALESCE(p.box, 0) AS box, (p.word_id IS NULL) AS isNew
     FROM words w
+    LEFT JOIN progress p ON p.word_id = w.id AND p.user_id = ?
     WHERE w.globally_skipped = 0
+      AND NOT EXISTS(SELECT 1 FROM user_skips us WHERE us.user_id = ? AND us.word_id = w.id)
       AND (w.word LIKE ? OR w.glosses LIKE ? OR w.forms LIKE ?)
     ORDER BY (w.word = ?) DESC, (w.word LIKE ?) DESC, (w.rank IS NULL) ASC, w.rank ASC
     LIMIT 12
-  `).all(like, like, like, q, `${q}%`);
+  `).all(uid, uid, like, like, like, q, `${q}%`);
   res.json(rows.map(formatCard));
 });
 

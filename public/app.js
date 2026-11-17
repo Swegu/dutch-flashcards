@@ -263,7 +263,7 @@ async function next() {
 async function jumpToWord(wordStr) {
   try {
     const found = await api(`word/${encodeURIComponent(wordStr)}`);
-    if (card) queue.unshift(card);
+    if (card && card.id !== found.id) queue.unshift(card);
     card = found;
     flipped = false;
     reporting = false;
@@ -435,6 +435,7 @@ async function rate(r) {
     if (r === 0) {
       c.isNew = false;
       c.stage = 'due';
+      queue = queue.filter(x => x.id !== c.id);
       queue.splice(Math.min(3, queue.length), 0, c);
     }
     if (res.dailyGoalJustMet) {
@@ -1262,6 +1263,19 @@ function settingsTabHtml() {
   </div>`;
 }
 
+function searchResultsHtml(results) {
+  return results.map(r => `
+    <button type="button" class="search-result-btn" data-act="jump" data-word="${esc(r.word)}">
+      <div>
+        <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
+        ${r.article ? articlePillHtml(r.article) : ''}
+        <b>${esc(r.word)}</b>
+      </div>
+      <span class="search-result-gloss">${esc(r.glosses.slice(0, 2).join('; '))}</span>
+    </button>
+  `).join('');
+}
+
 function renderModals() {
   const root = $('#modal-root');
   if (!root || !stats) {
@@ -1288,18 +1302,7 @@ function renderModals() {
         <button type="button" data-act="close-modal">✕</button>
       </div>
       <input id="modal-search-input" type="search" value="${esc(searchQuery)}" placeholder="${t('searchPlaceholder')}" autocomplete="off">
-      <div class="search-results-list">
-        ${searchResults.map(r => `
-          <button type="button" class="search-result-btn" data-act="jump" data-word="${esc(r.word)}">
-            <div>
-              <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
-              ${r.article ? articlePillHtml(r.article) : ''}
-              <b>${esc(r.word)}</b>
-            </div>
-            <span class="search-result-gloss">${esc(r.glosses.slice(0, 2).join('; '))}</span>
-          </button>
-        `).join('')}
-      </div>`;
+      <div class="search-results-list">${searchResultsHtml(searchResults)}</div>`;
   }
 
   root.innerHTML = `<div class="modal-backdrop" data-act="backdrop-close"><div class="modal-sheet" data-stop="1">${content}</div></div>`;
@@ -1417,18 +1420,7 @@ document.addEventListener('input', e => {
       try {
         searchResults = await api(`search?q=${encodeURIComponent(searchQuery.trim())}`);
         const listEl = $('.search-results-list');
-        if (listEl) {
-          listEl.innerHTML = searchResults.map(r => `
-            <button type="button" class="search-result-btn" data-act="jump" data-word="${esc(r.word)}">
-              <div>
-                <span class="pill level-badge level-${esc(r.level || 'C2')}">${esc(r.level || 'C2')}</span>
-                ${r.article ? articlePillHtml(r.article) : ''}
-                <b>${esc(r.word)}</b>
-              </div>
-              <span class="search-result-gloss">${esc(r.glosses.slice(0, 2).join('; '))}</span>
-            </button>
-          `).join('');
-        }
+        if (listEl) listEl.innerHTML = searchResultsHtml(searchResults);
       } catch { /* ignore */ }
     }, 180);
   } else if (e.target.id === 'type-input') {

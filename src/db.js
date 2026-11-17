@@ -146,8 +146,14 @@ CREATE TABLE IF NOT EXISTS user_skips(
 `);
 
 // Schema migrations for existing databases
-const cols = new Set(db.prepare("SELECT name FROM pragma_table_info('words')").all().map(c => c.name));
-const migrations = [
+function ensureColumns(table, defs) {
+  const existing = new Set(db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map(c => c.name));
+  for (const [col, def] of defs) {
+    if (!existing.has(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  }
+}
+
+ensureColumns('words', [
   ['freq', 'INTEGER'],
   ['article', 'TEXT'],
   ['alt_glosses', 'TEXT'],
@@ -158,17 +164,13 @@ const migrations = [
   ['themas', 'TEXT'],
   ['level', "TEXT NOT NULL DEFAULT 'C2'"],
   ['globally_skipped', 'INTEGER NOT NULL DEFAULT 0'],
-];
-for (const [col, def] of migrations) {
-  if (!cols.has(col)) db.exec(`ALTER TABLE words ADD COLUMN ${col} ${def}`);
-}
+]);
 db.exec('CREATE INDEX IF NOT EXISTS words_skip ON words(globally_skipped)');
 db.exec('CREATE INDEX IF NOT EXISTS words_level ON words(level, rank)');
 db.exec('CREATE INDEX IF NOT EXISTS words_themas ON words(themas)');
 db.exec('CREATE INDEX IF NOT EXISTS words_article ON words(article)');
 
-const userCols = new Set(db.prepare("SELECT name FROM pragma_table_info('users')").all().map(c => c.name));
-const userMigrations = [
+ensureColumns('users', [
   ['daily_new_goal', 'INTEGER NOT NULL DEFAULT 10'],
   ['daily_review_goal', 'INTEGER NOT NULL DEFAULT 30'],
   ['target_level', "TEXT NOT NULL DEFAULT 'auto'"],
@@ -177,19 +179,12 @@ const userMigrations = [
   ['last_study_day', 'TEXT'],
   ['dehet_correct', 'INTEGER NOT NULL DEFAULT 0'],
   ['dehet_wrong', 'INTEGER NOT NULL DEFAULT 0'],
-];
-for (const [col, def] of userMigrations) {
-  if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
-}
+]);
 
-const dailyCols = new Set(db.prepare("SELECT name FROM pragma_table_info('daily')").all().map(c => c.name));
-const dailyMigrations = [
+ensureColumns('daily', [
   ['new_words', 'INTEGER NOT NULL DEFAULT 0'],
   ['goal_met', 'INTEGER NOT NULL DEFAULT 0'],
-];
-for (const [col, def] of dailyMigrations) {
-  if (!dailyCols.has(col)) db.exec(`ALTER TABLE daily ADD COLUMN ${col} ${def}`);
-}
+]);
 
 // Allow NULL rank on older schemas where rank had NOT NULL constraint
 const rankInfo = db.prepare("SELECT \"notnull\" FROM pragma_table_info('words') WHERE name='rank'").get();
